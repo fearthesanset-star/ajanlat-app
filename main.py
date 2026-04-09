@@ -21,7 +21,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://ajanlat-frontend-bimqyjq9m-fearthesanset.vercel.app",
+        "https://ajanlat-frontend.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
