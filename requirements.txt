@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pydantic
+pandas
+openpyxl
+reportlab==3.6.12
+python-multipart
