@@ -28,7 +28,7 @@ function App() {
 
   const loadItems = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/items");
+      const res = await fetch("https://ajanlat-app.onrender.com/items");
       const data = await res.json();
       const safeData = Array.isArray(data) ? data : [];
       setItems(safeData);
@@ -45,7 +45,7 @@ function App() {
 
   const loadTemplates = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/templates");
+      const res = await fetch("https://ajanlat-app.onrender.com/templates");
       const data = await res.json();
       setTemplates(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -61,7 +61,7 @@ function App() {
     }
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/templates/${templateId}/items`);
+      const res = await fetch(`https://ajanlat-app.onrender.com/templates/${templateId}/items`);
       const data = await res.json();
       setTemplateItems(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -72,7 +72,7 @@ function App() {
 
   const loadCompanyName = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/settings/company-name");
+      const res = await fetch("https://ajanlat-app.onrender.com/settings/company-name");
       const data = await res.json();
       setCompanyName(data.company_name || "");
     } catch (err) {
@@ -84,7 +84,7 @@ function App() {
     if (!currentProjectId) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/projects/${currentProjectId}/items`);
+      const res = await fetch(`https://ajanlat-app.onrender.com/projects/${currentProjectId}/items`);
       const data = await res.json();
       setProjectItems(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -97,7 +97,7 @@ function App() {
     if (!currentProjectId) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/projects/${currentProjectId}/total`);
+      const res = await fetch(`https://ajanlat-app.onrender.com/projects/${currentProjectId}/total`);
       const data = await res.json();
       setProjectTotal(Number(data.total) || 0);
     } catch (err) {
@@ -124,7 +124,7 @@ function App() {
     };
 
     try {
-      await fetch("http://127.0.0.1:8000/items", {
+      await fetch("https://ajanlat-app.onrender.com/items", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -146,7 +146,7 @@ function App() {
 
   const handleDelete = async (itemId) => {
     try {
-      await fetch(`http://127.0.0.1:8000/items/${itemId}`, {
+      await fetch(`https://ajanlat-app.onrender.com/items/${itemId}`, {
         method: "DELETE",
       });
       loadItems();
@@ -163,7 +163,7 @@ function App() {
 
     try {
       const res = await fetch(
-        `http://127.0.0.1:8000/projects?name=${encodeURIComponent(projectName)}`,
+        `https://ajanlat-app.onrender.com/projects?name=${encodeURIComponent(projectName)}`,
         { method: "POST" }
       );
 
@@ -186,7 +186,7 @@ function App() {
 
     try {
       const res = await fetch(
-        `http://127.0.0.1:8000/templates?name=${encodeURIComponent(templateName)}`,
+        `https://ajanlat-app.onrender.com/templates?name=${encodeURIComponent(templateName)}`,
         { method: "POST" }
       );
 
@@ -219,7 +219,7 @@ function App() {
 
     try {
       await fetch(
-        `http://127.0.0.1:8000/templates/${selectedTemplateId}/items?item_id=${templateItemId}&default_quantity=${qty}`,
+        `https://ajanlat-app.onrender.com/templates/${selectedTemplateId}/items?item_id=${templateItemId}&default_quantity=${qty}`,
         { method: "POST" }
       );
 
@@ -236,7 +236,7 @@ function App() {
 
     try {
       await fetch(
-        `http://127.0.0.1:8000/templates/${selectedTemplateId}/items/${templateItemIdToDelete}`,
+        `https://ajanlat-app.onrender.com/templates/${selectedTemplateId}/items/${templateItemIdToDelete}`,
         { method: "DELETE" }
       );
 
@@ -267,7 +267,7 @@ function App() {
 
     try {
       await fetch(
-        `http://127.0.0.1:8000/projects/${projectId}/add-item/${itemId}?quantity=${quantity}`,
+        `https://ajanlat-app.onrender.com/projects/${projectId}/add-item/${itemId}?quantity=${quantity}`,
         { method: "POST" }
       );
 
@@ -291,7 +291,7 @@ function App() {
 
     try {
       await fetch(
-        `http://127.0.0.1:8000/projects/${projectId}/add-template/${selectedTemplateId}`,
+        `https://ajanlat-app.onrender.com/projects/${projectId}/add-template/${selectedTemplateId}`,
         { method: "POST" }
       );
 
@@ -307,7 +307,7 @@ function App() {
 
     try {
       await fetch(
-        `http://127.0.0.1:8000/projects/${projectId}/items/${projectItemId}`,
+        `https://ajanlat-app.onrender.com/projects/${projectId}/items/${projectItemId}`,
         { method: "DELETE" }
       );
 
@@ -324,7 +324,7 @@ function App() {
       return;
     }
 
-    window.open(`http://127.0.0.1:8000/projects/${projectId}/export-pdf`, "_blank");
+    window.open(`https://ajanlat-app.onrender.com/projects/${projectId}/export-pdf`, "_blank");
   };
 
   const saveCompanyName = async () => {
@@ -335,7 +335,7 @@ function App() {
 
     try {
       await fetch(
-        `http://127.0.0.1:8000/settings/company-name?name=${encodeURIComponent(companyName)}`,
+        `https://ajanlat-app.onrender.com/settings/company-name?name=${encodeURIComponent(companyName)}`,
         { method: "PUT" }
       );
 
