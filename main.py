@@ -10,6 +10,11 @@ from pydantic import BaseModel
 
 class Subscriber(BaseModel):
     email: str
+    accepted: bool
+from pydantic import BaseModel
+
+class Subscriber(BaseModel):
+    email: str
 from datetime import datetime
 import pandas as pd
 import io
@@ -18,7 +23,7 @@ from pydantic import BaseModel
 
 class Subscriber(BaseModel):
     email: str
-    
+
 from database import init_db, get_connection
 
 app = FastAPI()
@@ -825,3 +830,22 @@ def get_subscribers():
     conn.close()
 
     return [dict(row) for row in rows]
+
+@app.get("/fix-db")
+def fix_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("ALTER TABLE subscribers ADD COLUMN accepted INTEGER DEFAULT 0")
+        conn.commit()
+    except:
+        pass
+
+    conn.close()
+    return {"message": "DB updated"}
+
+cursor.execute("""
+    INSERT INTO subscribers (email, accepted)
+    VALUES (?, ?)
+""", (subscriber.email, int(subscriber.accepted)))
