@@ -14,7 +14,11 @@ from datetime import datetime
 import pandas as pd
 import io
 import os
+from pydantic import BaseModel
 
+class Subscriber(BaseModel):
+    email: str
+    
 from database import init_db, get_connection
 
 app = FastAPI()
