@@ -12,22 +12,7 @@ import pandas as pd
 import io
 import os
 
-
-
-
 from database import init_db, get_connection
-
-class Subscriber(BaseModel):
-    email: str
-    accepted: bool
-
-
-class Item(BaseModel):
-    name: str
-    type: str
-    unit: str
-    price: float
-    description: str
 
 app = FastAPI()
 init_db()
@@ -51,16 +36,19 @@ NEXT_PROJECT_ITEM_ID = 1
 NEXT_TEMPLATE_ID = 1
 NEXT_TEMPLATE_ITEM_ID = 1
 
-
-
 # "adatbázis" (MVP)
 ITEMS_DB = []
 PROJECT_ITEMS_DB = []
 TEMPLATES_DB = []
 TEMPLATE_ITEMS_DB = []
-TEMPLATE_ITEMS_DB = []
+
 
 # ----- MODEL -----
+class Subscriber(BaseModel):
+    email: str
+    accepted: bool
+
+
 class Item(BaseModel):
     name: str
     type: str
@@ -68,10 +56,12 @@ class Item(BaseModel):
     price: float
     description: str
 
+
 # ----- ROOT TESZT -----
 @app.get("/")
 def root():
     return {"message": "API működik"}
+
 
 # ----- CREATE ITEM -----
 @app.post("/items")
@@ -97,6 +87,7 @@ def create_item(item: Item):
         "description": item.description
     }
 
+
 @app.get("/items")
 def get_items():
     conn = get_connection()
@@ -107,6 +98,7 @@ def get_items():
     conn.close()
 
     return [dict(row) for row in rows]
+
 
 @app.delete("/items/{item_id}")
 def delete_item(item_id: int):
@@ -143,18 +135,6 @@ def create_project(name: str):
         "name": name
     }
 
-@app.post("/projects")
-def create_project(name: str):
-    global NEXT_PROJECT_ID
-
-    project = {
-        "id": NEXT_PROJECT_ID,
-        "name": name
-    }
-    NEXT_PROJECT_ID += 1
-
-    PROJECTS_DB.append(project)
-    return project
 
 @app.post("/projects/{project_id}/add-item/{item_id}")
 def add_item_to_project(project_id: int, item_id: int, quantity: float):
@@ -188,6 +168,8 @@ def add_item_to_project(project_id: int, item_id: int, quantity: float):
         "item_id": item_id,
         "quantity": quantity
     }
+
+
 @app.get("/projects/{project_id}/items")
 def get_project_items(project_id: int):
     conn = get_connection()
@@ -213,6 +195,7 @@ def get_project_items(project_id: int):
 
     return [dict(row) for row in rows]
 
+
 @app.get("/projects/{project_id}/total")
 def get_project_total(project_id: int):
     conn = get_connection()
@@ -235,6 +218,7 @@ def get_project_total(project_id: int):
         "total": total
     }
 
+
 @app.delete("/projects/{project_id}/items/{project_item_id}")
 def delete_project_item(project_id: int, project_item_id: int):
     conn = get_connection()
@@ -254,6 +238,7 @@ def delete_project_item(project_id: int, project_item_id: int):
     conn.close()
     return {"message": "Project item deleted"}
 
+
 @app.get("/projects/{project_id}/generate-text")
 def generate_project_text(project_id: int):
     descriptions = []
@@ -268,7 +253,6 @@ def generate_project_text(project_id: int):
     if not descriptions:
         return {"text": "Az ajánlat nem tartalmaz tételeket."}
 
-    # Összefűzés
     if len(descriptions) == 1:
         text = f"Az ajánlat tartalmazza a {descriptions[0]}."
     else:
@@ -307,6 +291,7 @@ def update_project_item_quantity(project_id: int, project_item_id: int, quantity
         "updated": dict(updated)
     }
 
+
 @app.get("/projects/{project_id}/export-pdf")
 def export_project_pdf(project_id: int):
     buffer = io.BytesIO()
@@ -315,20 +300,17 @@ def export_project_pdf(project_id: int):
 
     elements = []
 
-    # dátum
     today = datetime.now().strftime("%Y-%m-%d")
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Projekt keresése
     cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
     project = cursor.fetchone()
     if not project:
         conn.close()
         return {"error": "Project not found"}
 
-    # Projekt tételek lekérése
     cursor.execute("""
         SELECT
             project_items.id AS project_item_id,
@@ -349,33 +331,27 @@ def export_project_pdf(project_id: int):
         conn.close()
         return {"error": "Project has no items"}
 
-    # settings / cégnév lekérése
     cursor.execute("SELECT company_name FROM settings WHERE id = 1")
     settings_row = cursor.fetchone()
     current_company_name = settings_row["company_name"] if settings_row else COMPANY_NAME
 
     conn.close()
 
-    # LOGO
     logo_path = "logo.png"
     if os.path.exists(logo_path):
         img = Image(logo_path, width=120, height=60)
         elements.append(img)
         elements.append(Spacer(1, 10))
 
-    # Cégnév
     elements.append(Paragraph(current_company_name, styles["Title"]))
     elements.append(Spacer(1, 10))
 
-    # Dátum
     elements.append(Paragraph(f"Dátum: {today}", styles["Normal"]))
     elements.append(Spacer(1, 10))
 
-    # Cím
     elements.append(Paragraph(f"Árajánlat - {project['name']}", styles["Heading2"]))
     elements.append(Spacer(1, 20))
 
-    # Tábla fejléc
     table_data = [["Tétel", "Mennyiség", "Egységár", "Összesen"]]
 
     total = 0
@@ -401,11 +377,9 @@ def export_project_pdf(project_id: int):
     elements.append(table)
     elements.append(Spacer(1, 20))
 
-    # Végösszeg
     elements.append(Paragraph(f"<b>Végösszeg: {total} Ft</b>", styles["Heading2"]))
     elements.append(Spacer(1, 20))
 
-    # Szöveges ajánlati blokk
     elements.append(Paragraph("Tisztelt Megrendelő!", styles["Normal"]))
     elements.append(Spacer(1, 10))
 
@@ -448,7 +422,6 @@ def export_project_pdf(project_id: int):
         )
     )
 
-    # PDF elkészítése
     doc.build(elements)
     buffer.seek(0)
 
@@ -457,6 +430,7 @@ def export_project_pdf(project_id: int):
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=project_{project_id}.pdf"}
     )
+
 
 @app.post("/templates")
 def create_template(name: str):
@@ -488,6 +462,7 @@ def get_templates():
     conn.close()
 
     return [dict(row) for row in rows]
+
 
 @app.post("/templates/{template_id}/items")
 def add_item_to_template(template_id: int, item_id: int, default_quantity: float):
@@ -522,82 +497,85 @@ def add_item_to_template(template_id: int, item_id: int, default_quantity: float
         "default_quantity": default_quantity
     }
 
-    @app.get("/templates/{template_id}/items")
-    def get_template_items(template_id: int):
-        conn = get_connection()
-        cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT
-                template_items.id AS template_item_id,
-                items.id AS item_id,
-                items.name,
-                items.type,
-                items.unit,
-                items.price,
-                items.description,
-                template_items.default_quantity
-            FROM template_items
-            JOIN items ON template_items.item_id = items.id
-            WHERE template_items.template_id = ?
-        """, (template_id,))
+@app.get("/templates/{template_id}/items")
+def get_template_items(template_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
 
-        rows = cursor.fetchall()
+    cursor.execute("""
+        SELECT
+            template_items.id AS template_item_id,
+            items.id AS item_id,
+            items.name,
+            items.type,
+            items.unit,
+            items.price,
+            items.description,
+            template_items.default_quantity
+        FROM template_items
+        JOIN items ON template_items.item_id = items.id
+        WHERE template_items.template_id = ?
+    """, (template_id,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+@app.post("/projects/{project_id}/add-template/{template_id}")
+def add_template_to_project(project_id: int, template_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+    project = cursor.fetchone()
+    if not project:
         conn.close()
+        return {"error": "Project not found"}
 
-        return [dict(row) for row in rows]
-
-    @app.post("/projects/{project_id}/add-template/{template_id}")
-    def add_template_to_project(project_id: int, template_id: int):
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
-        project = cursor.fetchone()
-        if not project:
-            conn.close()
-            return {"error": "Project not found"}
-
-        cursor.execute("SELECT * FROM templates WHERE id = ?", (template_id,))
-        template = cursor.fetchone()
-        if not template:
-            conn.close()
-            return {"error": "Template not found"}
-
-        cursor.execute("""
-            SELECT * FROM template_items
-            WHERE template_id = ?
-        """, (template_id,))
-        template_items = cursor.fetchall()
-
-        added_items = []
-
-        for template_item in template_items:
-            cursor.execute("""
-                INSERT INTO project_items (project_id, item_id, quantity)
-                VALUES (?, ?, ?)
-            """, (
-                project_id,
-                template_item["item_id"],
-                template_item["default_quantity"]
-            ))
-
-            added_items.append({
-                "id": cursor.lastrowid,
-                "project_id": project_id,
-                "item_id": template_item["item_id"],
-                "quantity": template_item["default_quantity"]
-            })
-
-        conn.commit()
+    cursor.execute("SELECT * FROM templates WHERE id = ?", (template_id,))
+    template = cursor.fetchone()
+    if not template:
         conn.close()
+        return {"error": "Template not found"}
 
-        return {
-            "message": "Template added to project",
+    cursor.execute("""
+        SELECT * FROM template_items
+        WHERE template_id = ?
+    """, (template_id,))
+    template_items = cursor.fetchall()
+
+    added_items = []
+
+    for template_item in template_items:
+        cursor.execute("""
+            INSERT INTO project_items (project_id, item_id, quantity)
+            VALUES (?, ?, ?)
+        """, (
+            project_id,
+            template_item["item_id"],
+            template_item["default_quantity"]
+        ))
+
+        added_items.append({
+            "id": cursor.lastrowid,
             "project_id": project_id,
-            "template_id": template_id,
-            "added_items": added_items
-        }
+            "item_id": template_item["item_id"],
+            "quantity": template_item["default_quantity"]
+        })
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "message": "Template added to project",
+        "project_id": project_id,
+        "template_id": template_id,
+        "added_items": added_items
+    }
+
 
 @app.delete("/templates/{template_id}/items/{template_item_id}")
 def delete_template_item(template_id: int, template_item_id: int):
@@ -617,6 +595,7 @@ def delete_template_item(template_id: int, template_item_id: int):
 
     conn.close()
     return {"message": "Template item deleted"}
+
 
 @app.put("/templates/{template_id}/items/{template_item_id}")
 def update_template_item_quantity(template_id: int, template_item_id: int, default_quantity: float):
@@ -648,9 +627,6 @@ def update_template_item_quantity(template_id: int, template_item_id: int, defau
         "updated": dict(updated)
     }
 
-from fastapi import UploadFile, File
-import pandas as pd
-import io
 
 @app.post("/items/import")
 def import_items(file: UploadFile = File(...)):
@@ -720,6 +696,8 @@ def import_items(file: UploadFile = File(...)):
         "errors": errors,
         "items": imported_items
     }
+
+
 @app.put("/settings/company-name")
 def set_company_name(name: str):
     conn = get_connection()
@@ -741,6 +719,8 @@ def set_company_name(name: str):
         "message": "Company name updated",
         "company_name": row["company_name"]
     }
+
+
 @app.get("/settings/company-name")
 def get_company_name():
     conn = get_connection()
@@ -754,57 +734,7 @@ def get_company_name():
         "company_name": row["company_name"]
     }
 
-@app.post("/projects/{project_id}/add-template/{template_id}")
-def add_template_to_project(project_id: int, template_id: int):
-    conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
-    project = cursor.fetchone()
-    if not project:
-        conn.close()
-        return {"error": "Project not found"}
-
-    cursor.execute("SELECT * FROM templates WHERE id = ?", (template_id,))
-    template = cursor.fetchone()
-    if not template:
-        conn.close()
-        return {"error": "Template not found"}
-
-    cursor.execute("""
-        SELECT * FROM template_items
-        WHERE template_id = ?
-    """, (template_id,))
-    template_items = cursor.fetchall()
-
-    added_items = []
-
-    for template_item in template_items:
-        cursor.execute("""
-            INSERT INTO project_items (project_id, item_id, quantity)
-            VALUES (?, ?, ?)
-        """, (
-            project_id,
-            template_item["item_id"],
-            template_item["default_quantity"]
-        ))
-
-        added_items.append({
-            "id": cursor.lastrowid,
-            "project_id": project_id,
-            "item_id": template_item["item_id"],
-            "quantity": template_item["default_quantity"]
-        })
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "message": "Template added to project",
-        "project_id": project_id,
-        "template_id": template_id,
-        "added_items": added_items
-    }
 @app.post("/subscribe")
 def subscribe(subscriber: Subscriber):
     conn = get_connection()
@@ -823,6 +753,7 @@ def subscribe(subscriber: Subscriber):
     conn.close()
     return {"message": "Subscribed successfully"}
 
+
 @app.get("/subscribers")
 def get_subscribers():
     conn = get_connection()
@@ -833,6 +764,7 @@ def get_subscribers():
     conn.close()
 
     return [dict(row) for row in rows]
+
 
 @app.get("/fix-db")
 def fix_db():
