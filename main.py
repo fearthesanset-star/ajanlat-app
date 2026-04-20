@@ -6,7 +6,10 @@ from fastapi.responses import StreamingResponse
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
+from pydantic import BaseModel
 
+class Subscriber(BaseModel):
+    email: str
 from datetime import datetime
 import pandas as pd
 import io
@@ -790,3 +793,20 @@ def add_template_to_project(project_id: int, template_id: int):
         "template_id": template_id,
         "added_items": added_items
     }
+@app.post("/subscribe")
+def subscribe(subscriber: Subscriber):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            INSERT INTO subscribers (email)
+            VALUES (?)
+        """, (subscriber.email,))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        return {"error": "Email already exists or invalid"}
+
+    conn.close()
+    return {"message": "Subscribed successfully"}

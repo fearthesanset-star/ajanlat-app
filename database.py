@@ -71,6 +71,13 @@ def init_db():
         INSERT OR IGNORE INTO settings (id, company_name)
         VALUES (1, 'Saját Cég Kft.')
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS subscribers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
     conn.commit()
     conn.close()
