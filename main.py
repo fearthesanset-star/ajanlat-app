@@ -810,3 +810,14 @@ def subscribe(subscriber: Subscriber):
 
     conn.close()
     return {"message": "Subscribed successfully"}
+
+@app.get("/subscribers")
+def get_subscribers():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM subscribers ORDER BY id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
