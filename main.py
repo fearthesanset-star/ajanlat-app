@@ -6,25 +6,28 @@ from fastapi.responses import StreamingResponse
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-from pydantic import BaseModel
 
-class Subscriber(BaseModel):
-    email: str
-    accepted: bool
-from pydantic import BaseModel
-
-class Subscriber(BaseModel):
-    email: str
 from datetime import datetime
 import pandas as pd
 import io
 import os
-from pydantic import BaseModel
+
+
+
+
+from database import init_db, get_connection
 
 class Subscriber(BaseModel):
     email: str
+    accepted: bool
 
-from database import init_db, get_connection
+
+class Item(BaseModel):
+    name: str
+    type: str
+    unit: str
+    price: float
+    description: str
 
 app = FastAPI()
 init_db()
@@ -809,11 +812,11 @@ def subscribe(subscriber: Subscriber):
 
     try:
         cursor.execute("""
-            INSERT INTO subscribers (email)
-            VALUES (?)
-        """, (subscriber.email,))
+            INSERT INTO subscribers (email, accepted)
+            VALUES (?, ?)
+        """, (subscriber.email, int(subscriber.accepted)))
         conn.commit()
-    except Exception as e:
+    except Exception:
         conn.close()
         return {"error": "Email already exists or invalid"}
 
@@ -845,7 +848,4 @@ def fix_db():
     conn.close()
     return {"message": "DB updated"}
 
-cursor.execute("""
-    INSERT INTO subscribers (email, accepted)
-    VALUES (?, ?)
-""", (subscriber.email, int(subscriber.accepted)))
+
