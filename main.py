@@ -332,9 +332,12 @@ def export_project_pdf(project_id: int):
         conn.close()
         return {"error": "Project has no items"}
 
-    cursor.execute("SELECT company_name FROM settings WHERE id = 1")
+    cursor.execute("SELECT company_name, company_email, company_phone FROM settings WHERE id = 1")
     settings_row = cursor.fetchone()
+
     current_company_name = settings_row["company_name"] if settings_row else COMPANY_NAME
+    current_company_email = settings_row["company_email"] if settings_row else ""
+    current_company_phone = settings_row["company_phone"] if settings_row else ""
 
     conn.close()
 
@@ -420,20 +423,14 @@ def export_project_pdf(project_id: int):
     )
     elements.append(Spacer(1, 10))
 
-    # ELÉRHETŐSÉG
     if current_company_email:
-        elements.append(
-            Paragraph(f"Email: {current_company_email}", styles["Normal"])
-        )
+        elements.append(Paragraph(f"Email: {current_company_email}", styles["Normal"]))
 
     if current_company_phone:
-        elements.append(
-            Paragraph(f"Telefon: {current_company_phone}", styles["Normal"])
-        )
+        elements.append(Paragraph(f"Telefon: {current_company_phone}", styles["Normal"]))
 
     elements.append(Spacer(1, 10))
 
-    # ALÁÍRÁS
     elements.append(
         Paragraph(
             f"Üdvözlettel:<br/>{current_company_name}",
