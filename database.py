@@ -27,7 +27,8 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL
+            name TEXT NOT NULL,
+            valid_until TEXT
         )
     """)
 
@@ -72,7 +73,6 @@ def init_db():
         VALUES (1, 'Saját Cég Kft.')
     """)
 
-    # ✅ SUBSCRIBERS tábla (javítva!)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS subscribers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

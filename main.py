@@ -117,13 +117,13 @@ def delete_item(item_id: int):
 
 
 @app.post("/projects")
-def create_project(name: str):
+def create_project(name: str, valid_until: str = ""):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "INSERT INTO projects (name) VALUES (?)",
-        (name,)
+        "INSERT INTO projects (name, valid_until) VALUES (?, ?)",
+        (name, valid_until)
     )
 
     conn.commit()
@@ -132,7 +132,8 @@ def create_project(name: str):
 
     return {
         "id": project_id,
-        "name": name
+        "name": name,
+        "valid_until": valid_until
     }
 
 
@@ -348,6 +349,10 @@ def export_project_pdf(project_id: int):
 
     elements.append(Paragraph(f"Dátum: {today}", styles["Normal"]))
     elements.append(Spacer(1, 10))
+
+    if project["valid_until"]:
+        elements.append(Paragraph(f"Ajánlat érvényes: {project['valid_until']}", styles["Normal"]))
+        elements.append(Spacer(1, 10))
 
     elements.append(Paragraph(f"Árajánlat - {project['name']}", styles["Heading2"]))
     elements.append(Spacer(1, 20))
@@ -773,6 +778,12 @@ def fix_db():
 
     try:
         cursor.execute("ALTER TABLE subscribers ADD COLUMN accepted INTEGER DEFAULT 0")
+        conn.commit()
+    except:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE projects ADD COLUMN valid_until TEXT")
         conn.commit()
     except:
         pass
