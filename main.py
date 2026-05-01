@@ -816,7 +816,7 @@ def fix_db():
         cursor.execute("ALTER TABLE settings ADD COLUMN company_phone TEXT DEFAULT ''")
         conn.commit()
     except:
-        passtry:
+        try:
     cursor.execute("ALTER TABLE settings ADD COLUMN company_email TEXT DEFAULT ''")
     conn.commit()
 except:
