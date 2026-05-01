@@ -64,7 +64,9 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
-            company_name TEXT NOT NULL
+            company_name TEXT NOT NULL,
+            company_email TEXT DEFAULT '',
+            company_phone TEXT DEFAULT ''
         )
     """)
 

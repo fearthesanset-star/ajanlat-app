@@ -420,6 +420,20 @@ def export_project_pdf(project_id: int):
     )
     elements.append(Spacer(1, 10))
 
+    # ELÉRHETŐSÉG
+    if current_company_email:
+        elements.append(
+            Paragraph(f"Email: {current_company_email}", styles["Normal"])
+        )
+
+    if current_company_phone:
+        elements.append(
+            Paragraph(f"Telefon: {current_company_phone}", styles["Normal"])
+        )
+
+    elements.append(Spacer(1, 10))
+
+    # ALÁÍRÁS
     elements.append(
         Paragraph(
             f"Üdvözlettel:<br/>{current_company_name}",
@@ -703,40 +717,44 @@ def import_items(file: UploadFile = File(...)):
     }
 
 
-@app.put("/settings/company-name")
-def set_company_name(name: str):
+@app.put("/settings/company")
+def set_company_settings(name: str, email: str = "", phone: str = ""):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         UPDATE settings
-        SET company_name = ?
+        SET company_name = ?, company_email = ?, company_phone = ?
         WHERE id = 1
-    """, (name,))
+    """, (name, email, phone))
 
     conn.commit()
 
-    cursor.execute("SELECT company_name FROM settings WHERE id = 1")
+    cursor.execute("SELECT company_name, company_email, company_phone FROM settings WHERE id = 1")
     row = cursor.fetchone()
     conn.close()
 
     return {
-        "message": "Company name updated",
-        "company_name": row["company_name"]
+        "message": "Company settings updated",
+        "company_name": row["company_name"],
+        "company_email": row["company_email"],
+        "company_phone": row["company_phone"]
     }
 
 
-@app.get("/settings/company-name")
-def get_company_name():
+@app.get("/settings/company")
+def get_company_settings():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT company_name FROM settings WHERE id = 1")
+    cursor.execute("SELECT company_name, company_email, company_phone FROM settings WHERE id = 1")
     row = cursor.fetchone()
     conn.close()
 
     return {
-        "company_name": row["company_name"]
+        "company_name": row["company_name"],
+        "company_email": row["company_email"],
+        "company_phone": row["company_phone"]
     }
 
 
@@ -787,6 +805,28 @@ def fix_db():
         conn.commit()
     except:
         pass
+
+    try:
+        cursor.execute("ALTER TABLE settings ADD COLUMN company_email TEXT DEFAULT ''")
+        conn.commit()
+    except:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE settings ADD COLUMN company_phone TEXT DEFAULT ''")
+        conn.commit()
+    except:
+        passtry:
+    cursor.execute("ALTER TABLE settings ADD COLUMN company_email TEXT DEFAULT ''")
+    conn.commit()
+except:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE settings ADD COLUMN company_phone TEXT DEFAULT ''")
+    conn.commit()
+except:
+    pass
 
     conn.close()
     return {"message": "DB updated"}
