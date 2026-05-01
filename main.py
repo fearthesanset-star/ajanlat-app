@@ -816,17 +816,7 @@ def fix_db():
         cursor.execute("ALTER TABLE settings ADD COLUMN company_phone TEXT DEFAULT ''")
         conn.commit()
     except:
-        try:
-    cursor.execute("ALTER TABLE settings ADD COLUMN company_email TEXT DEFAULT ''")
-    conn.commit()
-except:
-    pass
-
-try:
-    cursor.execute("ALTER TABLE settings ADD COLUMN company_phone TEXT DEFAULT ''")
-    conn.commit()
-except:
-    pass
+        pass
 
     conn.close()
     return {"message": "DB updated"}
