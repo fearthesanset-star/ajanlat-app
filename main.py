@@ -16,13 +16,6 @@ from database import init_db, get_connection
 
 app = FastAPI()
 init_db()
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE,
-    password TEXT
-)
-""")
 
 class UserRegister(BaseModel):
     email: str
