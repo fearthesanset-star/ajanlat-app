@@ -124,15 +124,14 @@ def delete_item(item_id: int):
     conn.close()
     return {"message": "Item deleted"}
 
-
 @app.post("/projects")
-def create_project(name: str, valid_until: str = ""):
+def create_project(name: str, user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "INSERT INTO projects (name, valid_until) VALUES (?, ?)",
-        (name, valid_until)
+        "INSERT INTO projects (name, user_id) VALUES (?, ?)",
+        (name, user_id)
     )
 
     conn.commit()

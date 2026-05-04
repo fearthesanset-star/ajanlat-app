@@ -33,6 +33,15 @@ def init_db():
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        user_id INTEGER
+    )
+    """)
+    cursor.execute("ALTER TABLE projects ADD COLUMN user_id INTEGER")
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
