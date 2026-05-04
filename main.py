@@ -16,6 +16,22 @@ from database import init_db, get_connection
 
 app = FastAPI()
 init_db()
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE,
+    password TEXT
+)
+""")
+
+class UserRegister(BaseModel):
+    email: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -817,5 +833,46 @@ def fix_db():
 
     conn.close()
     return {"message": "DB updated"}
+
+@app.post("/register")
+def register(user: UserRegister):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "INSERT INTO users (email, password) VALUES (?, ?)",
+            (user.email, user.password)
+        )
+        conn.commit()
+    except:
+        conn.close()
+        return {"error": "Email már létezik"}
+
+    conn.close()
+    return {"message": "Sikeres regisztráció"}
+
+@app.post("/login")
+def login(user: UserLogin):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT * FROM users WHERE email = ? AND password = ?",
+        (user.email, user.password)
+    )
+
+    db_user = cursor.fetchone()
+    conn.close()
+
+    if not db_user:
+        return {"error": "Hibás email vagy jelszó"}
+
+    return {
+        "message": "Sikeres login",
+        "user_id": db_user["id"]
+    }
+
+
 
 
