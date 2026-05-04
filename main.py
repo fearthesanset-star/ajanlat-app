@@ -125,13 +125,13 @@ def delete_item(item_id: int):
     return {"message": "Item deleted"}
 
 @app.post("/projects")
-def create_project(name: str, user_id: int):
+def create_project(name: str, user_id: int, valid_until: str = ""):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "INSERT INTO projects (name, user_id) VALUES (?, ?)",
-        (name, user_id)
+        "INSERT INTO projects (name, user_id, valid_until) VALUES (?, ?, ?)",
+        (name, user_id, valid_until)
     )
 
     conn.commit()
@@ -141,6 +141,7 @@ def create_project(name: str, user_id: int):
     return {
         "id": project_id,
         "name": name,
+        "user_id": user_id,
         "valid_until": valid_until
     }
 
@@ -819,6 +820,18 @@ def fix_db():
 
     try:
         cursor.execute("ALTER TABLE settings ADD COLUMN company_phone TEXT DEFAULT ''")
+        conn.commit()
+    except:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE projects ADD COLUMN user_id INTEGER")
+        conn.commit()
+    except:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE projects ADD COLUMN valid_until TEXT")
         conn.commit()
     except:
         pass
