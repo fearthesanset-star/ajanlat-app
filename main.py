@@ -877,6 +877,16 @@ def login(user: UserLogin):
         "message": "Sikeres login",
         "user_id": db_user["id"]
     }
+@app.get("/debug-users")
+def debug_users():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id, email FROM users")
+    users = cursor.fetchall()
+
+    conn.close()
+    return users
 
 
 
