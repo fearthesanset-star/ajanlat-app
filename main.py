@@ -336,12 +336,11 @@ def export_project_pdf(project_id: int):
 
     conn = get_connection()
     cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+    project = cursor.fetchone()
 
-    cursor.execute(
-        "SELECT company_name, company_email, company_phone FROM settings WHERE user_id = ?",
-        (project["user_id"],)
-    )
-    settings_row = cursor.fetchone()
+
     if not project:
         conn.close()
         return {"error": "Project not found"}
