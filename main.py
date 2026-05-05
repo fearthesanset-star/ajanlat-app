@@ -366,7 +366,12 @@ def export_project_pdf(project_id: int):
         conn.close()
         return {"error": "Project has no items"}
 
-    cursor.execute("SELECT company_name, company_email, company_phone FROM settings WHERE id = 1")
+    cursor.execute("""
+        SELECT company_name, company_email, company_phone
+        FROM user_settings
+        WHERE user_id = ?
+    """, (project["user_id"],))
+
     settings_row = cursor.fetchone()
 
     current_company_name = settings_row["company_name"] if settings_row else COMPANY_NAME
@@ -697,35 +702,29 @@ def set_company_settings(user_id: int, name: str, email: str = "", phone: str = 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM settings WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,))
     existing = cursor.fetchone()
 
     if existing:
         cursor.execute("""
-            UPDATE settings
+            UPDATE user_settings
             SET company_name = ?, company_email = ?, company_phone = ?
             WHERE user_id = ?
         """, (name, email, phone, user_id))
     else:
         cursor.execute("""
-            INSERT INTO settings (user_id, company_name, company_email, company_phone)
+            INSERT INTO user_settings (user_id, company_name, company_email, company_phone)
             VALUES (?, ?, ?, ?)
         """, (user_id, name, email, phone))
 
     conn.commit()
-
-    cursor.execute(
-        "SELECT company_name, company_email, company_phone FROM settings WHERE user_id = ?",
-        (user_id,)
-    )
-    row = cursor.fetchone()
     conn.close()
 
     return {
         "message": "Company settings updated",
-        "company_name": row["company_name"],
-        "company_email": row["company_email"],
-        "company_phone": row["company_phone"]
+        "company_name": name,
+        "company_email": email,
+        "company_phone": phone
     }
 
 
@@ -734,10 +733,12 @@ def get_company_settings(user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT company_name, company_email, company_phone FROM settings WHERE user_id = ?",
-        (user_id,)
-    )
+    cursor.execute("""
+        SELECT company_name, company_email, company_phone
+        FROM user_settings
+        WHERE user_id = ?
+    """, (user_id,))
+
     row = cursor.fetchone()
     conn.close()
 

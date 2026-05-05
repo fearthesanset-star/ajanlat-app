@@ -96,6 +96,16 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE,
+            company_name TEXT DEFAULT '',
+            company_email TEXT DEFAULT '',
+            company_phone TEXT DEFAULT ''
+        )
+    """)
+
     # Régi adatbázis frissítések
     migrations = [
         "ALTER TABLE items ADD COLUMN user_id INTEGER",
