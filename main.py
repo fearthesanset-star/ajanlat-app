@@ -337,8 +337,11 @@ def export_project_pdf(project_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
-    project = cursor.fetchone()
+    cursor.execute(
+        "SELECT company_name, company_email, company_phone FROM settings WHERE user_id = ?",
+        (project["user_id"],)
+    )
+    settings_row = cursor.fetchone()
     if not project:
         conn.close()
         return {"error": "Project not found"}
@@ -690,19 +693,31 @@ def import_items(file: UploadFile = File(...)):
 
 
 @app.put("/settings/company")
-def set_company_settings(name: str, email: str = "", phone: str = ""):
+def set_company_settings(user_id: int, name: str, email: str = "", phone: str = ""):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE settings
-        SET company_name = ?, company_email = ?, company_phone = ?
-        WHERE id = 1
-    """, (name, email, phone))
+    cursor.execute("SELECT * FROM settings WHERE user_id = ?", (user_id,))
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.execute("""
+            UPDATE settings
+            SET company_name = ?, company_email = ?, company_phone = ?
+            WHERE user_id = ?
+        """, (name, email, phone, user_id))
+    else:
+        cursor.execute("""
+            INSERT INTO settings (user_id, company_name, company_email, company_phone)
+            VALUES (?, ?, ?, ?)
+        """, (user_id, name, email, phone))
 
     conn.commit()
 
-    cursor.execute("SELECT company_name, company_email, company_phone FROM settings WHERE id = 1")
+    cursor.execute(
+        "SELECT company_name, company_email, company_phone FROM settings WHERE user_id = ?",
+        (user_id,)
+    )
     row = cursor.fetchone()
     conn.close()
 
@@ -714,19 +729,29 @@ def set_company_settings(name: str, email: str = "", phone: str = ""):
     }
 
 
-@app.get("/settings/company")
-def get_company_settings():
+@app.get("/settings/company/{user_id}")
+def get_company_settings(user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT company_name, company_email, company_phone FROM settings WHERE id = 1")
+    cursor.execute(
+        "SELECT company_name, company_email, company_phone FROM settings WHERE user_id = ?",
+        (user_id,)
+    )
     row = cursor.fetchone()
     conn.close()
 
+    if not row:
+        return {
+            "company_name": "",
+            "company_email": "",
+            "company_phone": ""
+        }
+
     return {
-        "company_name": row["company_name"] if row else COMPANY_NAME,
-        "company_email": row["company_email"] if row else "",
-        "company_phone": row["company_phone"] if row else ""
+        "company_name": row["company_name"],
+        "company_email": row["company_email"],
+        "company_phone": row["company_phone"]
     }
 
 
