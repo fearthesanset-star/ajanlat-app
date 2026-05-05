@@ -14,23 +14,6 @@ def init_db():
     cursor = conn.cursor()
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-             name TEXT,
-             type TEXT,
-             unit TEXT,
-             price INTEGER,
-             description TEXT,
-             user_id INTEGER
-        )
-    """)
-    try:
-        cursor.execute("ALTER TABLE items ADD COLUMN user_id INTEGER")
-        conn.commit()
-    except:
-        pass
-
-    cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE,
@@ -39,22 +22,23 @@ def init_db():
     """)
 
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS projects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        user_id INTEGER
-    )
+        CREATE TABLE IF NOT EXISTS items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            unit TEXT NOT NULL,
+            price REAL NOT NULL,
+            description TEXT NOT NULL,
+            user_id INTEGER
+        )
     """)
-    try:
-        cursor.execute("ALTER TABLE projects ADD COLUMN user_id INTEGER")
-    except:
-        pass
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            valid_until TEXT
+            valid_until TEXT,
+            user_id INTEGER
         )
     """)
 
@@ -72,7 +56,7 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
+            name TEXT NOT NULL,
             user_id INTEGER
         )
     """)
@@ -98,8 +82,8 @@ def init_db():
     """)
 
     cursor.execute("""
-        INSERT OR IGNORE INTO settings (id, company_name)
-        VALUES (1, 'Saját Cég Kft.')
+        INSERT OR IGNORE INTO settings (id, company_name, company_email, company_phone)
+        VALUES (1, 'Saját Cég Kft.', '', '')
     """)
 
     cursor.execute("""
@@ -110,6 +94,23 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Régi adatbázis frissítések
+    migrations = [
+        "ALTER TABLE items ADD COLUMN user_id INTEGER",
+        "ALTER TABLE projects ADD COLUMN user_id INTEGER",
+        "ALTER TABLE projects ADD COLUMN valid_until TEXT",
+        "ALTER TABLE templates ADD COLUMN user_id INTEGER",
+        "ALTER TABLE settings ADD COLUMN company_email TEXT DEFAULT ''",
+        "ALTER TABLE settings ADD COLUMN company_phone TEXT DEFAULT ''",
+        "ALTER TABLE subscribers ADD COLUMN accepted INTEGER DEFAULT 0",
+    ]
+
+    for migration in migrations:
+        try:
+            cursor.execute(migration)
+        except sqlite3.OperationalError:
+            pass
 
     conn.commit()
     conn.close()
