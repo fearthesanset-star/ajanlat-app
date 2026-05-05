@@ -16,11 +16,12 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            unit TEXT NOT NULL,
-            price REAL NOT NULL,
-            description TEXT NOT NULL
+             name TEXT,
+             type TEXT,
+             unit TEXT,
+             price INTEGER,
+             description TEXT,
+             user_id INTEGER
         )
     """)
 
@@ -63,7 +64,8 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL
+            name TEXT,
+            user_id INTEGER
         )
     """)
 

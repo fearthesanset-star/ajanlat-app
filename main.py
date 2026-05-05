@@ -79,9 +79,9 @@ def create_item(item: Item):
     cursor = conn.cursor()
 
     cursor.execute("""
-        INSERT INTO items (name, type, unit, price, description)
-        VALUES (?, ?, ?, ?, ?)
-    """, (item.name, item.type, item.unit, item.price, item.description))
+    INSERT INTO items (name, type, unit, price, description, user_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, (item.name, item.type, item.unit, item.price, item.description, item.user_id))
 
     conn.commit()
     item_id = cursor.lastrowid
@@ -102,7 +102,7 @@ def get_items():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM items")
+    cursor.execute("SELECT * FROM items WHERE user_id = ?", (user_id,))
     rows = cursor.fetchall()
     conn.close()
 
@@ -462,9 +462,10 @@ def create_template(name: str):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "INSERT INTO templates (name) VALUES (?)",
-        (name,)
+    cursor.execute("""
+    INSERT INTO templates (name, user_id)
+    VALUES (?, ?)
+    """, (template.name, template.user_id))
     )
 
     conn.commit()
@@ -482,7 +483,7 @@ def get_templates():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM templates")
+    cursor.execute("SELECT * FROM templates WHERE user_id = ?", (user_id,))
     rows = cursor.fetchall()
     conn.close()
 
