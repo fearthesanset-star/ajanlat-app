@@ -483,7 +483,7 @@ def get_templates():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM templates WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT * FROM templates WHERE user_id = ?", (user_id,)
     rows = cursor.fetchall()
     conn.close()
 
