@@ -40,7 +40,10 @@ def init_db():
         user_id INTEGER
     )
     """)
-    cursor.execute("ALTER TABLE projects ADD COLUMN user_id INTEGER")
+    try:
+        cursor.execute("ALTER TABLE projects ADD COLUMN user_id INTEGER")
+    except:
+        pass
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS projects (
