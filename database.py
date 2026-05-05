@@ -24,6 +24,11 @@ def init_db():
              user_id INTEGER
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE items ADD COLUMN user_id INTEGER")
+        conn.commit()
+    except:
+        pass
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
