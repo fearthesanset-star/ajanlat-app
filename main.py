@@ -17,15 +17,6 @@ from database import init_db, get_connection
 app = FastAPI()
 init_db()
 
-class UserRegister(BaseModel):
-    email: str
-    password: str
-
-class UserLogin(BaseModel):
-    email: str
-    password: str
-
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -39,20 +30,17 @@ app.add_middleware(
 
 COMPANY_NAME = "Sajat Ceg Kft."
 
-NEXT_ITEM_ID = 1
-NEXT_PROJECT_ID = 1
-NEXT_PROJECT_ITEM_ID = 1
-NEXT_TEMPLATE_ID = 1
-NEXT_TEMPLATE_ITEM_ID = 1
 
-# "adatbázis" (MVP)
-ITEMS_DB = []
-PROJECT_ITEMS_DB = []
-TEMPLATES_DB = []
-TEMPLATE_ITEMS_DB = []
+class UserRegister(BaseModel):
+    email: str
+    password: str
 
 
-# ----- MODEL -----
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
 class Subscriber(BaseModel):
     email: str
     accepted: bool
@@ -67,13 +55,70 @@ class Item(BaseModel):
     user_id: int
 
 
-# ----- ROOT TESZT -----
 @app.get("/")
 def root():
     return {"message": "API működik"}
 
 
-# ----- CREATE ITEM -----
+@app.post("/register")
+def register(user: UserRegister):
+    email = user.email.strip()
+    password = user.password.strip()
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "INSERT INTO users (email, password) VALUES (?, ?)",
+            (email, password)
+        )
+        conn.commit()
+    except Exception:
+        conn.close()
+        return {"error": "Email már létezik"}
+
+    conn.close()
+    return {"message": "Sikeres regisztráció"}
+
+
+@app.post("/login")
+def login(user: UserLogin):
+    email = user.email.strip()
+    password = user.password.strip()
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT * FROM users WHERE email = ? AND password = ?",
+        (email, password)
+    )
+
+    db_user = cursor.fetchone()
+    conn.close()
+
+    if not db_user:
+        return {"error": "Hibás email vagy jelszó"}
+
+    return {
+        "message": "Sikeres login",
+        "user_id": db_user["id"]
+    }
+
+
+@app.get("/debug-users")
+def debug_users():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id, email FROM users")
+    users = cursor.fetchall()
+
+    conn.close()
+    return [dict(user) for user in users]
+
+
 @app.post("/items")
 def create_item(item: Item):
     conn = get_connection()
@@ -82,7 +127,14 @@ def create_item(item: Item):
     cursor.execute("""
         INSERT INTO items (name, type, unit, price, description, user_id)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, (item.name, item.type, item.unit, item.price, item.description, item.user_id))
+    """, (
+        item.name,
+        item.type,
+        item.unit,
+        item.price,
+        item.description,
+        item.user_id
+    ))
 
     conn.commit()
     item_id = cursor.lastrowid
@@ -106,17 +158,21 @@ def get_items(user_id: int):
 
     cursor.execute("SELECT * FROM items WHERE user_id = ?", (user_id,))
     rows = cursor.fetchall()
-    conn.close()
 
+    conn.close()
     return [dict(row) for row in rows]
 
 
 @app.delete("/items/{item_id}")
-def delete_item(item_id: int):
+def delete_item(item_id: int, user_id: int = None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("DELETE FROM items WHERE id = ?", (item_id,))
+    if user_id is not None:
+        cursor.execute("DELETE FROM items WHERE id = ? AND user_id = ?", (item_id, user_id))
+    else:
+        cursor.execute("DELETE FROM items WHERE id = ?", (item_id,))
+
     conn.commit()
 
     if cursor.rowcount == 0:
@@ -125,6 +181,7 @@ def delete_item(item_id: int):
 
     conn.close()
     return {"message": "Item deleted"}
+
 
 @app.post("/projects")
 def create_project(name: str, user_id: int, valid_until: str = ""):
@@ -148,6 +205,18 @@ def create_project(name: str, user_id: int, valid_until: str = ""):
     }
 
 
+@app.get("/projects/user/{user_id}")
+def get_projects_for_user(user_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM projects WHERE user_id = ? ORDER BY id DESC", (user_id,))
+    rows = cursor.fetchall()
+
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 @app.post("/projects/{project_id}/add-item/{item_id}")
 def add_item_to_project(project_id: int, item_id: int, quantity: float):
     conn = get_connection()
@@ -164,6 +233,11 @@ def add_item_to_project(project_id: int, item_id: int, quantity: float):
     if not item:
         conn.close()
         return {"error": "Item not found"}
+
+    if project["user_id"] is not None and item["user_id"] is not None:
+        if project["user_id"] != item["user_id"]:
+            conn.close()
+            return {"error": "Item does not belong to this user"}
 
     cursor.execute("""
         INSERT INTO project_items (project_id, item_id, quantity)
@@ -251,65 +325,11 @@ def delete_project_item(project_id: int, project_item_id: int):
     return {"message": "Project item deleted"}
 
 
-@app.get("/projects/{project_id}/generate-text")
-def generate_project_text(project_id: int):
-    descriptions = []
-
-    for project_item in PROJECT_ITEMS_DB:
-        if project_item["project_id"] == project_id:
-            item = next((i for i in ITEMS_DB if i["id"] == project_item["item_id"]), None)
-
-            if item and item["description"]:
-                descriptions.append(item["description"])
-
-    if not descriptions:
-        return {"text": "Az ajánlat nem tartalmaz tételeket."}
-
-    if len(descriptions) == 1:
-        text = f"Az ajánlat tartalmazza a {descriptions[0]}."
-    else:
-        text = "Az ajánlat tartalmazza a " + ", valamint a ".join(descriptions) + "."
-
-    return {"text": text}
-
-
-@app.put("/projects/{project_id}/items/{project_item_id}")
-def update_project_item_quantity(project_id: int, project_item_id: int, quantity: float):
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        UPDATE project_items
-        SET quantity = ?
-        WHERE id = ? AND project_id = ?
-    """, (quantity, project_item_id, project_id))
-
-    conn.commit()
-
-    if cursor.rowcount == 0:
-        conn.close()
-        return {"error": "Project item not found"}
-
-    cursor.execute("""
-        SELECT * FROM project_items
-        WHERE id = ? AND project_id = ?
-    """, (project_item_id, project_id))
-
-    updated = cursor.fetchone()
-    conn.close()
-
-    return {
-        "message": "Quantity updated",
-        "updated": dict(updated)
-    }
-
-
 @app.get("/projects/{project_id}/export-pdf")
 def export_project_pdf(project_id: int):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer)
     styles = getSampleStyleSheet()
-
     elements = []
 
     today = datetime.now().strftime("%Y-%m-%d")
@@ -364,7 +384,7 @@ def export_project_pdf(project_id: int):
     elements.append(Paragraph(f"Dátum: {today}", styles["Normal"]))
     elements.append(Spacer(1, 10))
 
-    if project["valid_until"]:
+    if "valid_until" in project.keys() and project["valid_until"]:
         elements.append(Paragraph(f"Ajánlat érvényes: {project['valid_until']}", styles["Normal"]))
         elements.append(Spacer(1, 10))
 
@@ -372,7 +392,6 @@ def export_project_pdf(project_id: int):
     elements.append(Spacer(1, 20))
 
     table_data = [["Tétel", "Mennyiség", "Egységár", "Összesen"]]
-
     total = 0
 
     for item in project_items:
@@ -460,15 +479,14 @@ def export_project_pdf(project_id: int):
 
 
 @app.post("/templates")
-def create_template(name: str):
+def create_template(name: str, user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-    INSERT INTO templates (name, user_id)
-    VALUES (?, ?)
-    """, (template.name, template.user_id))
-
+        INSERT INTO templates (name, user_id)
+        VALUES (?, ?)
+    """, (name, user_id))
 
     conn.commit()
     template_id = cursor.lastrowid
@@ -476,19 +494,20 @@ def create_template(name: str):
 
     return {
         "id": template_id,
-        "name": name
+        "name": name,
+        "user_id": user_id
     }
 
 
-@app.get("/templates")
-def get_templates():
+@app.get("/templates/{user_id}")
+def get_templates(user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("SELECT * FROM templates WHERE user_id = ?", (user_id,))
     rows = cursor.fetchall()
-    conn.close()
 
+    conn.close()
     return [dict(row) for row in rows]
 
 
@@ -508,6 +527,11 @@ def add_item_to_template(template_id: int, item_id: int, default_quantity: float
     if not item:
         conn.close()
         return {"error": "Item not found"}
+
+    if template["user_id"] is not None and item["user_id"] is not None:
+        if template["user_id"] != item["user_id"]:
+            conn.close()
+            return {"error": "Item does not belong to this user"}
 
     cursor.execute("""
         INSERT INTO template_items (template_id, item_id, default_quantity)
@@ -569,10 +593,12 @@ def add_template_to_project(project_id: int, template_id: int):
         conn.close()
         return {"error": "Template not found"}
 
-    cursor.execute("""
-        SELECT * FROM template_items
-        WHERE template_id = ?
-    """, (template_id,))
+    if project["user_id"] is not None and template["user_id"] is not None:
+        if project["user_id"] != template["user_id"]:
+            conn.close()
+            return {"error": "Template does not belong to this user"}
+
+    cursor.execute("SELECT * FROM template_items WHERE template_id = ?", (template_id,))
     template_items = cursor.fetchall()
 
     added_items = []
@@ -658,71 +684,8 @@ def update_template_item_quantity(template_id: int, template_item_id: int, defau
 
 @app.post("/items/import")
 def import_items(file: UploadFile = File(...)):
-    errors = []
-    imported_count = 0
-    imported_items = []
-
-    try:
-        file_content = file.file.read()
-
-        if file.filename.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(file_content))
-        elif file.filename.endswith(".xlsx"):
-            df = pd.read_excel(io.BytesIO(file_content))
-        else:
-            return {"error": "Only .csv and .xlsx files are supported"}
-
-    except Exception as e:
-        return {
-            "error": "File could not be read",
-            "details": str(e)
-        }
-
-    required_columns = ["name", "type", "unit", "price", "description"]
-
-    for col in required_columns:
-        if col not in df.columns:
-            return {"error": f"Missing required column: {col}"}
-
-    for index, row in df.iterrows():
-        try:
-            name = str(row["name"]).strip()
-            item_type = str(row["type"]).strip()
-            unit = str(row["unit"]).strip()
-            description = str(row["description"]).strip()
-
-            if pd.isna(row["price"]):
-                raise ValueError("price is missing")
-
-            price = float(row["price"])
-
-            if not name:
-                raise ValueError("name is empty")
-
-            new_item = {
-                "id": len(ITEMS_DB) + 1,
-                "name": name,
-                "type": item_type,
-                "unit": unit,
-                "price": price,
-                "description": description
-            }
-
-            ITEMS_DB.append(new_item)
-            imported_items.append(new_item)
-            imported_count += 1
-
-        except Exception as e:
-            errors.append({
-                "row": int(index) + 2,
-                "error": str(e)
-            })
-
     return {
-        "message": "Import finished",
-        "imported": imported_count,
-        "errors": errors,
-        "items": imported_items
+        "message": "Import temporarily disabled during user-based migration"
     }
 
 
@@ -761,9 +724,9 @@ def get_company_settings():
     conn.close()
 
     return {
-        "company_name": row["company_name"],
-        "company_email": row["company_email"],
-        "company_phone": row["company_phone"]
+        "company_name": row["company_name"] if row else COMPANY_NAME,
+        "company_email": row["company_email"] if row else "",
+        "company_phone": row["company_phone"] if row else ""
     }
 
 
@@ -800,96 +763,8 @@ def get_subscribers():
 
 @app.get("/fix-db")
 def fix_db():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("ALTER TABLE subscribers ADD COLUMN accepted INTEGER DEFAULT 0")
-        conn.commit()
-    except:
-        pass
-
-    try:
-        cursor.execute("ALTER TABLE projects ADD COLUMN valid_until TEXT")
-        conn.commit()
-    except:
-        pass
-
-    try:
-        cursor.execute("ALTER TABLE settings ADD COLUMN company_email TEXT DEFAULT ''")
-        conn.commit()
-    except:
-        pass
-
-    try:
-        cursor.execute("ALTER TABLE settings ADD COLUMN company_phone TEXT DEFAULT ''")
-        conn.commit()
-    except:
-        pass
-
-    try:
-        cursor.execute("ALTER TABLE projects ADD COLUMN user_id INTEGER")
-        conn.commit()
-    except:
-        pass
-
-    try:
-        cursor.execute("ALTER TABLE projects ADD COLUMN valid_until TEXT")
-        conn.commit()
-    except:
-        pass
-
-    conn.close()
+    init_db()
     return {"message": "DB updated"}
-
-@app.post("/register")
-def register(user: UserRegister):
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(
-            "INSERT INTO users (email, password) VALUES (?, ?)",
-            (user.email, user.password)
-        )
-        conn.commit()
-    except:
-        conn.close()
-        return {"error": "Email már létezik"}
-
-    conn.close()
-    return {"message": "Sikeres regisztráció"}
-
-@app.post("/login")
-def login(user: UserLogin):
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT * FROM users WHERE email = ? AND password = ?",
-        (user.email, user.password)
-    )
-
-    db_user = cursor.fetchone()
-    conn.close()
-
-    if not db_user:
-        return {"error": "Hibás email vagy jelszó"}
-
-    return {
-        "message": "Sikeres login",
-        "user_id": db_user["id"]
-    }
-@app.get("/debug-users")
-def debug_users():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT id, email FROM users")
-    users = cursor.fetchall()
-
-    conn.close()
-    return users
 
 
 
