@@ -64,6 +64,7 @@ class Item(BaseModel):
     unit: str
     price: float
     description: str
+    user_id: int
 
 
 # ----- ROOT TESZT -----
@@ -79,8 +80,8 @@ def create_item(item: Item):
     cursor = conn.cursor()
 
     cursor.execute("""
-    INSERT INTO items (name, type, unit, price, description, user_id)
-    VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO items (name, type, unit, price, description, user_id)
+        VALUES (?, ?, ?, ?, ?, ?)
     """, (item.name, item.type, item.unit, item.price, item.description, item.user_id))
 
     conn.commit()
@@ -93,12 +94,13 @@ def create_item(item: Item):
         "type": item.type,
         "unit": item.unit,
         "price": item.price,
-        "description": item.description
+        "description": item.description,
+        "user_id": item.user_id
     }
 
 
-@app.get("/items")
-def get_items():
+@app.get("/items/{user_id}")
+def get_items(user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -466,7 +468,7 @@ def create_template(name: str):
     INSERT INTO templates (name, user_id)
     VALUES (?, ?)
     """, (template.name, template.user_id))
-    
+
 
     conn.commit()
     template_id = cursor.lastrowid
