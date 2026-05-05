@@ -83,8 +83,8 @@ def init_db():
     """)
 
     cursor.execute("""
-        INSERT OR IGNORE INTO settings (id, company_name, company_email, company_phone)
-        VALUES (1, 'Saját Cég Kft.', '', '')
+        INSERT OR IGNORE INTO settings (id, company_name)
+        VALUES (1, 'Saját Cég Kft.')
     """)
 
     cursor.execute("""
