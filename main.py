@@ -774,6 +774,17 @@ def subscribe(subscriber: Subscriber):
     conn.close()
     return {"message": "Subscribed successfully"}
 
+@app.get("/debug-user-settings")
+def debug_user_settings():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM user_settings")
+    rows = cursor.fetchall()
+
+    conn.close()
+    return [dict(row) for row in rows]
+
 
 @app.get("/subscribers")
 def get_subscribers():
