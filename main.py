@@ -3,13 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 import bcrypt
+from jose import jwt
+from datetime import timedelta
 
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 import os
 
@@ -30,6 +32,9 @@ app.add_middleware(
 )
 
 COMPANY_NAME = "Sajat Ceg Kft."
+SECRET_KEY = "SUPER_SECRET_KEY_CHANGE_THIS_LATER"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_HOURS = 24
 def hash_password(password: str) -> str:
     password_bytes = password.encode("utf-8")[:72]
     hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
@@ -40,6 +45,15 @@ def verify_password(password: str, hashed_password: str) -> bool:
     password_bytes = password.encode("utf-8")[:72]
     hashed_bytes = hashed_password.encode("utf-8")
     return bcrypt.checkpw(password_bytes, hashed_bytes)
+def create_access_token(user_id: int):
+    expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+
+    payload = {
+        "sub": str(user_id),
+        "exp": expire
+    }
+
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def db_query(query: str) -> str:
@@ -132,14 +146,17 @@ def login(user: UserLogin):
         password,
         db_user["password"]
     )
-    
+
 
     if not valid_password:
         return {"error": "Hibás email vagy jelszó"}
 
+    token = create_access_token(db_user["id"])
+
     return {
         "message": "Sikeres login",
-        "user_id": db_user["id"]
+        "user_id": db_user["id"],
+        "access_token": token
     }
 
 
