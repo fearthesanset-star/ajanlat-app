@@ -1,10 +1,12 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 import bcrypt
-from jose import jwt
+from jose import jwt, JWTError
 from datetime import timedelta
+from fastapi import Depends, HTTPException, Header
+from jose import JWTError
 
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
@@ -54,6 +56,27 @@ def create_access_token(user_id: int):
     }
 
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user_id(authorization: str = Header(None)) -> int:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+
+    token = authorization.replace("Bearer ", "")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        return int(user_id)
+
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
 def db_query(query: str) -> str:
@@ -192,9 +215,10 @@ def create_item(item: Item):
         "user_id": item.user_id
     }
 
-
-@app.get("/items/{user_id}")
-def get_items(user_id: int):
+    @app.get("/items/{user_id}")
+    def get_items(user_id: int, current_user_id: int = Depends(get_current_user_id)):
+        if user_id != current_user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
     conn = get_connection()
     cursor = conn.cursor()
 
