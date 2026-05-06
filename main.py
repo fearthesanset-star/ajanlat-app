@@ -2,18 +2,12 @@ from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
-import bcrypt
 from jose import jwt, JWTError
-from datetime import timedelta
-from fastapi import Depends, HTTPException, Header
-from jose import JWTError
-
-
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-
 from datetime import datetime, timedelta
+import bcrypt
 import io
 import os
 
@@ -34,9 +28,28 @@ app.add_middleware(
 )
 
 COMPANY_NAME = "Sajat Ceg Kft."
-SECRET_KEY = "SUPER_SECRET_KEY_CHANGE_THIS_LATER"
+
+SECRET_KEY = os.getenv("SECRET_KEY", "SUPER_SECRET_KEY_CHANGE_THIS_LATER")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
+
+
+def db_query(query: str) -> str:
+    if is_postgres():
+        return query.replace("?", "%s")
+    return query
+
+
+def returning_id() -> str:
+    return " RETURNING id" if is_postgres() else ""
+
+
+def get_inserted_id(cursor):
+    if is_postgres():
+        return cursor.fetchone()["id"]
+    return cursor.lastrowid
+
+
 def hash_password(password: str) -> str:
     password_bytes = password.encode("utf-8")[:72]
     hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
@@ -47,15 +60,18 @@ def verify_password(password: str, hashed_password: str) -> bool:
     password_bytes = password.encode("utf-8")[:72]
     hashed_bytes = hashed_password.encode("utf-8")
     return bcrypt.checkpw(password_bytes, hashed_bytes)
+
+
 def create_access_token(user_id: int):
     expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
 
     payload = {
         "sub": str(user_id),
-        "exp": expire
+        "exp": expire,
     }
 
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
 
 def get_current_user_id(authorization: str = Header(None)) -> int:
     if not authorization:
@@ -79,22 +95,6 @@ def get_current_user_id(authorization: str = Header(None)) -> int:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
-def db_query(query: str) -> str:
-    if is_postgres():
-        return query.replace("?", "%s")
-    return query
-
-
-def returning_id() -> str:
-    return " RETURNING id" if is_postgres() else ""
-
-
-def get_inserted_id(cursor):
-    if is_postgres():
-        return cursor.fetchone()["id"]
-    return cursor.lastrowid
-
-
 class UserRegister(BaseModel):
     email: str
     password: str
@@ -116,7 +116,6 @@ class Item(BaseModel):
     unit: str
     price: float
     description: str
-    user_id: int
 
 
 @app.get("/")
@@ -135,7 +134,7 @@ def register(user: UserRegister):
     try:
         cursor.execute(
             db_query("INSERT INTO users (email, password) VALUES (?, ?)"),
-            (email, password)
+            (email, password),
         )
         conn.commit()
     except Exception:
@@ -156,7 +155,7 @@ def login(user: UserLogin):
 
     cursor.execute(
         db_query("SELECT * FROM users WHERE email = ?"),
-        (email,)
+        (email,),
     )
 
     db_user = cursor.fetchone()
@@ -165,13 +164,7 @@ def login(user: UserLogin):
     if not db_user:
         return {"error": "Hibás email vagy jelszó"}
 
-    valid_password = verify_password(
-        password,
-        db_user["password"]
-    )
-
-
-    if not valid_password:
+    if not verify_password(password, db_user["password"]):
         return {"error": "Hibás email vagy jelszó"}
 
     token = create_access_token(db_user["id"])
@@ -179,12 +172,17 @@ def login(user: UserLogin):
     return {
         "message": "Sikeres login",
         "user_id": db_user["id"],
-        "access_token": token
+        "access_token": token,
     }
 
 
+@app.get("/me")
+def get_me(current_user_id: int = Depends(get_current_user_id)):
+    return {"user_id": current_user_id}
+
+
 @app.post("/items")
-def create_item(item: Item):
+def create_item(item: Item, current_user_id: int = Depends(get_current_user_id)):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -198,7 +196,7 @@ def create_item(item: Item):
         item.unit,
         item.price,
         item.description,
-        item.user_id
+        current_user_id,
     ))
 
     item_id = get_inserted_id(cursor)
@@ -212,17 +210,19 @@ def create_item(item: Item):
         "unit": item.unit,
         "price": item.price,
         "description": item.description,
-        "user_id": item.user_id
+        "user_id": current_user_id,
     }
 
-    @app.get("/items/{user_id}")
-    def get_items(user_id: int, current_user_id: int = Depends(get_current_user_id)):
-        if user_id != current_user_id:
-            raise HTTPException(status_code=403, detail="Forbidden")
+
+@app.get("/items/me")
+def get_my_items(current_user_id: int = Depends(get_current_user_id)):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(db_query("SELECT * FROM items WHERE user_id = ?"), (user_id,))
+    cursor.execute(
+        db_query("SELECT * FROM items WHERE user_id = ? ORDER BY id DESC"),
+        (current_user_id,),
+    )
     rows = cursor.fetchall()
 
     conn.close()
@@ -230,33 +230,31 @@ def create_item(item: Item):
 
 
 @app.delete("/items/{item_id}")
-def delete_item(item_id: int, user_id: int = None):
+def delete_item(item_id: int, current_user_id: int = Depends(get_current_user_id)):
     conn = get_connection()
     cursor = conn.cursor()
 
-    if user_id is not None:
-        cursor.execute(
-            db_query("DELETE FROM items WHERE id = ? AND user_id = ?"),
-            (item_id, user_id)
-        )
-    else:
-        cursor.execute(
-            db_query("DELETE FROM items WHERE id = ?"),
-            (item_id,)
-        )
+    cursor.execute(
+        db_query("DELETE FROM items WHERE id = ? AND user_id = ?"),
+        (item_id, current_user_id),
+    )
 
     conn.commit()
 
     if cursor.rowcount == 0:
         conn.close()
-        return {"error": "Item not found"}
+        raise HTTPException(status_code=404, detail="Item not found")
 
     conn.close()
     return {"message": "Item deleted"}
 
 
 @app.post("/projects")
-def create_project(name: str, user_id: int, valid_until: str = ""):
+def create_project(
+    name: str,
+    valid_until: str = "",
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -264,7 +262,7 @@ def create_project(name: str, user_id: int, valid_until: str = ""):
         INSERT INTO projects (name, user_id, valid_until)
         VALUES (?, ?, ?)
         {returning_id()}
-    """), (name, user_id, valid_until))
+    """), (name, current_user_id, valid_until))
 
     project_id = get_inserted_id(cursor)
     conn.commit()
@@ -273,19 +271,19 @@ def create_project(name: str, user_id: int, valid_until: str = ""):
     return {
         "id": project_id,
         "name": name,
-        "user_id": user_id,
-        "valid_until": valid_until
+        "user_id": current_user_id,
+        "valid_until": valid_until,
     }
 
 
-@app.get("/projects/user/{user_id}")
-def get_projects_for_user(user_id: int):
+@app.get("/projects/me")
+def get_my_projects(current_user_id: int = Depends(get_current_user_id)):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
         db_query("SELECT * FROM projects WHERE user_id = ? ORDER BY id DESC"),
-        (user_id,)
+        (current_user_id,),
     )
     rows = cursor.fetchall()
 
@@ -294,26 +292,34 @@ def get_projects_for_user(user_id: int):
 
 
 @app.post("/projects/{project_id}/add-item/{item_id}")
-def add_item_to_project(project_id: int, item_id: int, quantity: float):
+def add_item_to_project(
+    project_id: int,
+    item_id: int,
+    quantity: float,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(db_query("SELECT * FROM projects WHERE id = ?"), (project_id,))
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
     project = cursor.fetchone()
+
     if not project:
         conn.close()
-        return {"error": "Project not found"}
+        raise HTTPException(status_code=404, detail="Project not found")
 
-    cursor.execute(db_query("SELECT * FROM items WHERE id = ?"), (item_id,))
+    cursor.execute(
+        db_query("SELECT * FROM items WHERE id = ? AND user_id = ?"),
+        (item_id, current_user_id),
+    )
     item = cursor.fetchone()
+
     if not item:
         conn.close()
-        return {"error": "Item not found"}
-
-    if project["user_id"] is not None and item["user_id"] is not None:
-        if project["user_id"] != item["user_id"]:
-            conn.close()
-            return {"error": "Item does not belong to this user"}
+        raise HTTPException(status_code=404, detail="Item not found")
 
     cursor.execute(db_query(f"""
         INSERT INTO project_items (project_id, item_id, quantity)
@@ -329,14 +335,27 @@ def add_item_to_project(project_id: int, item_id: int, quantity: float):
         "id": project_item_id,
         "project_id": project_id,
         "item_id": item_id,
-        "quantity": quantity
+        "quantity": quantity,
     }
 
 
 @app.get("/projects/{project_id}/items")
-def get_project_items(project_id: int):
+def get_project_items(
+    project_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
+    project = cursor.fetchone()
+
+    if not project:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Project not found")
 
     cursor.execute(db_query("""
         SELECT
@@ -360,9 +379,22 @@ def get_project_items(project_id: int):
 
 
 @app.get("/projects/{project_id}/total")
-def get_project_total(project_id: int):
+def get_project_total(
+    project_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
+    project = cursor.fetchone()
+
+    if not project:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Project not found")
 
     cursor.execute(db_query("""
         SELECT SUM(project_items.quantity * items.price) AS total
@@ -378,14 +410,28 @@ def get_project_total(project_id: int):
 
     return {
         "project_id": project_id,
-        "total": total
+        "total": total,
     }
 
 
 @app.delete("/projects/{project_id}/items/{project_item_id}")
-def delete_project_item(project_id: int, project_item_id: int):
+def delete_project_item(
+    project_id: int,
+    project_item_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
+    project = cursor.fetchone()
+
+    if not project:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Project not found")
 
     cursor.execute(db_query("""
         DELETE FROM project_items
@@ -396,14 +442,17 @@ def delete_project_item(project_id: int, project_item_id: int):
 
     if cursor.rowcount == 0:
         conn.close()
-        return {"error": "Project item not found"}
+        raise HTTPException(status_code=404, detail="Project item not found")
 
     conn.close()
     return {"message": "Project item deleted"}
 
 
 @app.get("/projects/{project_id}/export-pdf")
-def export_project_pdf(project_id: int):
+def export_project_pdf(
+    project_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer)
     styles = getSampleStyleSheet()
@@ -414,12 +463,15 @@ def export_project_pdf(project_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(db_query("SELECT * FROM projects WHERE id = ?"), (project_id,))
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
     project = cursor.fetchone()
 
     if not project:
         conn.close()
-        return {"error": "Project not found"}
+        raise HTTPException(status_code=404, detail="Project not found")
 
     cursor.execute(db_query("""
         SELECT
@@ -445,7 +497,7 @@ def export_project_pdf(project_id: int):
         SELECT company_name, company_email, company_phone
         FROM user_settings
         WHERE user_id = ?
-    """), (project["user_id"],))
+    """), (current_user_id,))
 
     settings_row = cursor.fetchone()
 
@@ -467,7 +519,7 @@ def export_project_pdf(project_id: int):
     elements.append(Paragraph(f"Dátum: {today}", styles["Normal"]))
     elements.append(Spacer(1, 10))
 
-    if "valid_until" in project.keys() and project["valid_until"]:
+    if project["valid_until"]:
         elements.append(Paragraph(f"Ajánlat érvényes: {project['valid_until']}", styles["Normal"]))
         elements.append(Spacer(1, 10))
 
@@ -485,7 +537,7 @@ def export_project_pdf(project_id: int):
             item["name"],
             f"{item['quantity']} {item['unit']}",
             f"{item['price']} Ft",
-            f"{line_total} Ft"
+            f"{line_total} Ft",
         ])
 
     table = Table(table_data)
@@ -507,7 +559,7 @@ def export_project_pdf(project_id: int):
     elements.append(
         Paragraph(
             f"Az alábbiakban küldjük a(z) <b>{project['name']}</b> projektre vonatkozó árajánlatunkat.",
-            styles["Normal"]
+            styles["Normal"],
         )
     )
     elements.append(Spacer(1, 10))
@@ -515,7 +567,7 @@ def export_project_pdf(project_id: int):
     elements.append(
         Paragraph(
             "Az ajánlat a fenti táblázatban részletezett munkákat, anyagokat és kapcsolódó tételeket tartalmazza.",
-            styles["Normal"]
+            styles["Normal"],
         )
     )
     elements.append(Spacer(1, 10))
@@ -523,7 +575,7 @@ def export_project_pdf(project_id: int):
     elements.append(
         Paragraph(
             f"<b>A teljes kivitelezési költség: {total} Ft.</b>",
-            styles["Normal"]
+            styles["Normal"],
         )
     )
     elements.append(Spacer(1, 10))
@@ -531,7 +583,7 @@ def export_project_pdf(project_id: int):
     elements.append(
         Paragraph(
             "Amennyiben kérdése merül fel, állunk rendelkezésére.",
-            styles["Normal"]
+            styles["Normal"],
         )
     )
     elements.append(Spacer(1, 10))
@@ -547,7 +599,7 @@ def export_project_pdf(project_id: int):
     elements.append(
         Paragraph(
             f"Üdvözlettel:<br/>{current_company_name}",
-            styles["Normal"]
+            styles["Normal"],
         )
     )
 
@@ -557,12 +609,15 @@ def export_project_pdf(project_id: int):
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=project_{project_id}.pdf"}
+        headers={"Content-Disposition": f"attachment; filename=project_{project_id}.pdf"},
     )
 
 
 @app.post("/templates")
-def create_template(name: str, user_id: int):
+def create_template(
+    name: str,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -570,7 +625,7 @@ def create_template(name: str, user_id: int):
         INSERT INTO templates (name, user_id)
         VALUES (?, ?)
         {returning_id()}
-    """), (name, user_id))
+    """), (name, current_user_id))
 
     template_id = get_inserted_id(cursor)
     conn.commit()
@@ -579,16 +634,19 @@ def create_template(name: str, user_id: int):
     return {
         "id": template_id,
         "name": name,
-        "user_id": user_id
+        "user_id": current_user_id,
     }
 
 
-@app.get("/templates/{user_id}")
-def get_templates(user_id: int):
+@app.get("/templates/me")
+def get_my_templates(current_user_id: int = Depends(get_current_user_id)):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(db_query("SELECT * FROM templates WHERE user_id = ?"), (user_id,))
+    cursor.execute(
+        db_query("SELECT * FROM templates WHERE user_id = ? ORDER BY id DESC"),
+        (current_user_id,),
+    )
     rows = cursor.fetchall()
 
     conn.close()
@@ -596,26 +654,34 @@ def get_templates(user_id: int):
 
 
 @app.post("/templates/{template_id}/items")
-def add_item_to_template(template_id: int, item_id: int, default_quantity: float):
+def add_item_to_template(
+    template_id: int,
+    item_id: int,
+    default_quantity: float,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(db_query("SELECT * FROM templates WHERE id = ?"), (template_id,))
+    cursor.execute(
+        db_query("SELECT * FROM templates WHERE id = ? AND user_id = ?"),
+        (template_id, current_user_id),
+    )
     template = cursor.fetchone()
+
     if not template:
         conn.close()
-        return {"error": "Template not found"}
+        raise HTTPException(status_code=404, detail="Template not found")
 
-    cursor.execute(db_query("SELECT * FROM items WHERE id = ?"), (item_id,))
+    cursor.execute(
+        db_query("SELECT * FROM items WHERE id = ? AND user_id = ?"),
+        (item_id, current_user_id),
+    )
     item = cursor.fetchone()
+
     if not item:
         conn.close()
-        return {"error": "Item not found"}
-
-    if template["user_id"] is not None and item["user_id"] is not None:
-        if template["user_id"] != item["user_id"]:
-            conn.close()
-            return {"error": "Item does not belong to this user"}
+        raise HTTPException(status_code=404, detail="Item not found")
 
     cursor.execute(db_query(f"""
         INSERT INTO template_items (template_id, item_id, default_quantity)
@@ -631,14 +697,27 @@ def add_item_to_template(template_id: int, item_id: int, default_quantity: float
         "id": template_item_id,
         "template_id": template_id,
         "item_id": item_id,
-        "default_quantity": default_quantity
+        "default_quantity": default_quantity,
     }
 
 
 @app.get("/templates/{template_id}/items")
-def get_template_items(template_id: int):
+def get_template_items(
+    template_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM templates WHERE id = ? AND user_id = ?"),
+        (template_id, current_user_id),
+    )
+    template = cursor.fetchone()
+
+    if not template:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Template not found")
 
     cursor.execute(db_query("""
         SELECT
@@ -662,28 +741,38 @@ def get_template_items(template_id: int):
 
 
 @app.post("/projects/{project_id}/add-template/{template_id}")
-def add_template_to_project(project_id: int, template_id: int):
+def add_template_to_project(
+    project_id: int,
+    template_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(db_query("SELECT * FROM projects WHERE id = ?"), (project_id,))
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
     project = cursor.fetchone()
+
     if not project:
         conn.close()
-        return {"error": "Project not found"}
+        raise HTTPException(status_code=404, detail="Project not found")
 
-    cursor.execute(db_query("SELECT * FROM templates WHERE id = ?"), (template_id,))
+    cursor.execute(
+        db_query("SELECT * FROM templates WHERE id = ? AND user_id = ?"),
+        (template_id, current_user_id),
+    )
     template = cursor.fetchone()
+
     if not template:
         conn.close()
-        return {"error": "Template not found"}
+        raise HTTPException(status_code=404, detail="Template not found")
 
-    if project["user_id"] is not None and template["user_id"] is not None:
-        if project["user_id"] != template["user_id"]:
-            conn.close()
-            return {"error": "Template does not belong to this user"}
-
-    cursor.execute(db_query("SELECT * FROM template_items WHERE template_id = ?"), (template_id,))
+    cursor.execute(
+        db_query("SELECT * FROM template_items WHERE template_id = ?"),
+        (template_id,),
+    )
     template_items = cursor.fetchall()
 
     added_items = []
@@ -696,14 +785,14 @@ def add_template_to_project(project_id: int, template_id: int):
         """), (
             project_id,
             template_item["item_id"],
-            template_item["default_quantity"]
+            template_item["default_quantity"],
         ))
 
         added_items.append({
             "id": get_inserted_id(cursor),
             "project_id": project_id,
             "item_id": template_item["item_id"],
-            "quantity": template_item["default_quantity"]
+            "quantity": template_item["default_quantity"],
         })
 
     conn.commit()
@@ -713,14 +802,28 @@ def add_template_to_project(project_id: int, template_id: int):
         "message": "Template added to project",
         "project_id": project_id,
         "template_id": template_id,
-        "added_items": added_items
+        "added_items": added_items,
     }
 
 
 @app.delete("/templates/{template_id}/items/{template_item_id}")
-def delete_template_item(template_id: int, template_item_id: int):
+def delete_template_item(
+    template_id: int,
+    template_item_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM templates WHERE id = ? AND user_id = ?"),
+        (template_id, current_user_id),
+    )
+    template = cursor.fetchone()
+
+    if not template:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Template not found")
 
     cursor.execute(db_query("""
         DELETE FROM template_items
@@ -731,16 +834,31 @@ def delete_template_item(template_id: int, template_item_id: int):
 
     if cursor.rowcount == 0:
         conn.close()
-        return {"error": "Template item not found"}
+        raise HTTPException(status_code=404, detail="Template item not found")
 
     conn.close()
     return {"message": "Template item deleted"}
 
 
 @app.put("/templates/{template_id}/items/{template_item_id}")
-def update_template_item_quantity(template_id: int, template_item_id: int, default_quantity: float):
+def update_template_item_quantity(
+    template_id: int,
+    template_item_id: int,
+    default_quantity: float,
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM templates WHERE id = ? AND user_id = ?"),
+        (template_id, current_user_id),
+    )
+    template = cursor.fetchone()
+
+    if not template:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Template not found")
 
     cursor.execute(db_query("""
         UPDATE template_items
@@ -752,7 +870,7 @@ def update_template_item_quantity(template_id: int, template_item_id: int, defau
 
     if cursor.rowcount == 0:
         conn.close()
-        return {"error": "Template item not found"}
+        raise HTTPException(status_code=404, detail="Template item not found")
 
     cursor.execute(db_query("""
         SELECT * FROM template_items
@@ -764,23 +882,34 @@ def update_template_item_quantity(template_id: int, template_item_id: int, defau
 
     return {
         "message": "Template item quantity updated",
-        "updated": dict(updated)
+        "updated": dict(updated),
     }
 
 
 @app.post("/items/import")
-def import_items(file: UploadFile = File(...)):
+def import_items(
+    file: UploadFile = File(...),
+    current_user_id: int = Depends(get_current_user_id),
+):
     return {
         "message": "Import temporarily disabled during user-based migration"
     }
 
 
 @app.put("/settings/company")
-def set_company_settings(user_id: int, name: str, email: str = "", phone: str = ""):
+def set_company_settings(
+    name: str,
+    email: str = "",
+    phone: str = "",
+    current_user_id: int = Depends(get_current_user_id),
+):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(db_query("SELECT * FROM user_settings WHERE user_id = ?"), (user_id,))
+    cursor.execute(
+        db_query("SELECT * FROM user_settings WHERE user_id = ?"),
+        (current_user_id,),
+    )
     existing = cursor.fetchone()
 
     if existing:
@@ -788,12 +917,12 @@ def set_company_settings(user_id: int, name: str, email: str = "", phone: str = 
             UPDATE user_settings
             SET company_name = ?, company_email = ?, company_phone = ?
             WHERE user_id = ?
-        """), (name, email, phone, user_id))
+        """), (name, email, phone, current_user_id))
     else:
         cursor.execute(db_query("""
             INSERT INTO user_settings (user_id, company_name, company_email, company_phone)
             VALUES (?, ?, ?, ?)
-        """), (user_id, name, email, phone))
+        """), (current_user_id, name, email, phone))
 
     conn.commit()
     conn.close()
@@ -802,12 +931,12 @@ def set_company_settings(user_id: int, name: str, email: str = "", phone: str = 
         "message": "Company settings updated",
         "company_name": name,
         "company_email": email,
-        "company_phone": phone
+        "company_phone": phone,
     }
 
 
-@app.get("/settings/company/{user_id}")
-def get_company_settings(user_id: int):
+@app.get("/settings/company/me")
+def get_my_company_settings(current_user_id: int = Depends(get_current_user_id)):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -815,7 +944,7 @@ def get_company_settings(user_id: int):
         SELECT company_name, company_email, company_phone
         FROM user_settings
         WHERE user_id = ?
-    """), (user_id,))
+    """), (current_user_id,))
 
     row = cursor.fetchone()
     conn.close()
@@ -824,13 +953,13 @@ def get_company_settings(user_id: int):
         return {
             "company_name": "",
             "company_email": "",
-            "company_phone": ""
+            "company_phone": "",
         }
 
     return {
         "company_name": row["company_name"],
         "company_email": row["company_email"],
-        "company_phone": row["company_phone"]
+        "company_phone": row["company_phone"],
     }
 
 
