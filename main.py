@@ -8,11 +8,10 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
 from datetime import datetime
-import pandas as pd
 import io
 import os
 
-from database import init_db, get_connection
+from database import init_db, get_connection, is_postgres
 
 app = FastAPI()
 init_db()
@@ -29,6 +28,22 @@ app.add_middleware(
 )
 
 COMPANY_NAME = "Sajat Ceg Kft."
+
+
+def db_query(query: str) -> str:
+    if is_postgres():
+        return query.replace("?", "%s")
+    return query
+
+
+def returning_id() -> str:
+    return " RETURNING id" if is_postgres() else ""
+
+
+def get_inserted_id(cursor):
+    if is_postgres():
+        return cursor.fetchone()["id"]
+    return cursor.lastrowid
 
 
 class UserRegister(BaseModel):
@@ -70,7 +85,7 @@ def register(user: UserRegister):
 
     try:
         cursor.execute(
-            "INSERT INTO users (email, password) VALUES (?, ?)",
+            db_query("INSERT INTO users (email, password) VALUES (?, ?)"),
             (email, password)
         )
         conn.commit()
@@ -91,7 +106,7 @@ def login(user: UserLogin):
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT * FROM users WHERE email = ? AND password = ?",
+        db_query("SELECT * FROM users WHERE email = ? AND password = ?"),
         (email, password)
     )
 
@@ -107,18 +122,16 @@ def login(user: UserLogin):
     }
 
 
-
-
-
 @app.post("/items")
 def create_item(item: Item):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(db_query(f"""
         INSERT INTO items (name, type, unit, price, description, user_id)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, (
+        {returning_id()}
+    """), (
         item.name,
         item.type,
         item.unit,
@@ -127,8 +140,8 @@ def create_item(item: Item):
         item.user_id
     ))
 
+    item_id = get_inserted_id(cursor)
     conn.commit()
-    item_id = cursor.lastrowid
     conn.close()
 
     return {
@@ -147,7 +160,7 @@ def get_items(user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM items WHERE user_id = ?", (user_id,))
+    cursor.execute(db_query("SELECT * FROM items WHERE user_id = ?"), (user_id,))
     rows = cursor.fetchall()
 
     conn.close()
@@ -160,9 +173,15 @@ def delete_item(item_id: int, user_id: int = None):
     cursor = conn.cursor()
 
     if user_id is not None:
-        cursor.execute("DELETE FROM items WHERE id = ? AND user_id = ?", (item_id, user_id))
+        cursor.execute(
+            db_query("DELETE FROM items WHERE id = ? AND user_id = ?"),
+            (item_id, user_id)
+        )
     else:
-        cursor.execute("DELETE FROM items WHERE id = ?", (item_id,))
+        cursor.execute(
+            db_query("DELETE FROM items WHERE id = ?"),
+            (item_id,)
+        )
 
     conn.commit()
 
@@ -179,13 +198,14 @@ def create_project(name: str, user_id: int, valid_until: str = ""):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "INSERT INTO projects (name, user_id, valid_until) VALUES (?, ?, ?)",
-        (name, user_id, valid_until)
-    )
+    cursor.execute(db_query(f"""
+        INSERT INTO projects (name, user_id, valid_until)
+        VALUES (?, ?, ?)
+        {returning_id()}
+    """), (name, user_id, valid_until))
 
+    project_id = get_inserted_id(cursor)
     conn.commit()
-    project_id = cursor.lastrowid
     conn.close()
 
     return {
@@ -201,7 +221,10 @@ def get_projects_for_user(user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM projects WHERE user_id = ? ORDER BY id DESC", (user_id,))
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE user_id = ? ORDER BY id DESC"),
+        (user_id,)
+    )
     rows = cursor.fetchall()
 
     conn.close()
@@ -213,13 +236,13 @@ def add_item_to_project(project_id: int, item_id: int, quantity: float):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+    cursor.execute(db_query("SELECT * FROM projects WHERE id = ?"), (project_id,))
     project = cursor.fetchone()
     if not project:
         conn.close()
         return {"error": "Project not found"}
 
-    cursor.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+    cursor.execute(db_query("SELECT * FROM items WHERE id = ?"), (item_id,))
     item = cursor.fetchone()
     if not item:
         conn.close()
@@ -230,13 +253,14 @@ def add_item_to_project(project_id: int, item_id: int, quantity: float):
             conn.close()
             return {"error": "Item does not belong to this user"}
 
-    cursor.execute("""
+    cursor.execute(db_query(f"""
         INSERT INTO project_items (project_id, item_id, quantity)
         VALUES (?, ?, ?)
-    """, (project_id, item_id, quantity))
+        {returning_id()}
+    """), (project_id, item_id, quantity))
 
+    project_item_id = get_inserted_id(cursor)
     conn.commit()
-    project_item_id = cursor.lastrowid
     conn.close()
 
     return {
@@ -252,7 +276,7 @@ def get_project_items(project_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         SELECT
             project_items.id AS project_item_id,
             items.id AS item_id,
@@ -265,7 +289,7 @@ def get_project_items(project_id: int):
         FROM project_items
         JOIN items ON project_items.item_id = items.id
         WHERE project_items.project_id = ?
-    """, (project_id,))
+    """), (project_id,))
 
     rows = cursor.fetchall()
     conn.close()
@@ -278,12 +302,12 @@ def get_project_total(project_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         SELECT SUM(project_items.quantity * items.price) AS total
         FROM project_items
         JOIN items ON project_items.item_id = items.id
         WHERE project_items.project_id = ?
-    """, (project_id,))
+    """), (project_id,))
 
     row = cursor.fetchone()
     conn.close()
@@ -301,10 +325,10 @@ def delete_project_item(project_id: int, project_item_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         DELETE FROM project_items
         WHERE id = ? AND project_id = ?
-    """, (project_item_id, project_id))
+    """), (project_item_id, project_id))
 
     conn.commit()
 
@@ -328,15 +352,14 @@ def export_project_pdf(project_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+    cursor.execute(db_query("SELECT * FROM projects WHERE id = ?"), (project_id,))
     project = cursor.fetchone()
-
 
     if not project:
         conn.close()
         return {"error": "Project not found"}
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         SELECT
             project_items.id AS project_item_id,
             items.id AS item_id,
@@ -349,18 +372,18 @@ def export_project_pdf(project_id: int):
         FROM project_items
         JOIN items ON project_items.item_id = items.id
         WHERE project_items.project_id = ?
-    """, (project_id,))
+    """), (project_id,))
     project_items = cursor.fetchall()
 
     if not project_items:
         conn.close()
         return {"error": "Project has no items"}
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         SELECT company_name, company_email, company_phone
         FROM user_settings
         WHERE user_id = ?
-    """, (project["user_id"],))
+    """), (project["user_id"],))
 
     settings_row = cursor.fetchone()
 
@@ -481,13 +504,14 @@ def create_template(name: str, user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(db_query(f"""
         INSERT INTO templates (name, user_id)
         VALUES (?, ?)
-    """, (name, user_id))
+        {returning_id()}
+    """), (name, user_id))
 
+    template_id = get_inserted_id(cursor)
     conn.commit()
-    template_id = cursor.lastrowid
     conn.close()
 
     return {
@@ -502,7 +526,7 @@ def get_templates(user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM templates WHERE user_id = ?", (user_id,))
+    cursor.execute(db_query("SELECT * FROM templates WHERE user_id = ?"), (user_id,))
     rows = cursor.fetchall()
 
     conn.close()
@@ -514,13 +538,13 @@ def add_item_to_template(template_id: int, item_id: int, default_quantity: float
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM templates WHERE id = ?", (template_id,))
+    cursor.execute(db_query("SELECT * FROM templates WHERE id = ?"), (template_id,))
     template = cursor.fetchone()
     if not template:
         conn.close()
         return {"error": "Template not found"}
 
-    cursor.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+    cursor.execute(db_query("SELECT * FROM items WHERE id = ?"), (item_id,))
     item = cursor.fetchone()
     if not item:
         conn.close()
@@ -531,13 +555,14 @@ def add_item_to_template(template_id: int, item_id: int, default_quantity: float
             conn.close()
             return {"error": "Item does not belong to this user"}
 
-    cursor.execute("""
+    cursor.execute(db_query(f"""
         INSERT INTO template_items (template_id, item_id, default_quantity)
         VALUES (?, ?, ?)
-    """, (template_id, item_id, default_quantity))
+        {returning_id()}
+    """), (template_id, item_id, default_quantity))
 
+    template_item_id = get_inserted_id(cursor)
     conn.commit()
-    template_item_id = cursor.lastrowid
     conn.close()
 
     return {
@@ -553,7 +578,7 @@ def get_template_items(template_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         SELECT
             template_items.id AS template_item_id,
             items.id AS item_id,
@@ -566,7 +591,7 @@ def get_template_items(template_id: int):
         FROM template_items
         JOIN items ON template_items.item_id = items.id
         WHERE template_items.template_id = ?
-    """, (template_id,))
+    """), (template_id,))
 
     rows = cursor.fetchall()
     conn.close()
@@ -579,13 +604,13 @@ def add_template_to_project(project_id: int, template_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+    cursor.execute(db_query("SELECT * FROM projects WHERE id = ?"), (project_id,))
     project = cursor.fetchone()
     if not project:
         conn.close()
         return {"error": "Project not found"}
 
-    cursor.execute("SELECT * FROM templates WHERE id = ?", (template_id,))
+    cursor.execute(db_query("SELECT * FROM templates WHERE id = ?"), (template_id,))
     template = cursor.fetchone()
     if not template:
         conn.close()
@@ -596,23 +621,24 @@ def add_template_to_project(project_id: int, template_id: int):
             conn.close()
             return {"error": "Template does not belong to this user"}
 
-    cursor.execute("SELECT * FROM template_items WHERE template_id = ?", (template_id,))
+    cursor.execute(db_query("SELECT * FROM template_items WHERE template_id = ?"), (template_id,))
     template_items = cursor.fetchall()
 
     added_items = []
 
     for template_item in template_items:
-        cursor.execute("""
+        cursor.execute(db_query(f"""
             INSERT INTO project_items (project_id, item_id, quantity)
             VALUES (?, ?, ?)
-        """, (
+            {returning_id()}
+        """), (
             project_id,
             template_item["item_id"],
             template_item["default_quantity"]
         ))
 
         added_items.append({
-            "id": cursor.lastrowid,
+            "id": get_inserted_id(cursor),
             "project_id": project_id,
             "item_id": template_item["item_id"],
             "quantity": template_item["default_quantity"]
@@ -634,10 +660,10 @@ def delete_template_item(template_id: int, template_item_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         DELETE FROM template_items
         WHERE id = ? AND template_id = ?
-    """, (template_item_id, template_id))
+    """), (template_item_id, template_id))
 
     conn.commit()
 
@@ -654,11 +680,11 @@ def update_template_item_quantity(template_id: int, template_item_id: int, defau
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         UPDATE template_items
         SET default_quantity = ?
         WHERE id = ? AND template_id = ?
-    """, (default_quantity, template_item_id, template_id))
+    """), (default_quantity, template_item_id, template_id))
 
     conn.commit()
 
@@ -666,10 +692,10 @@ def update_template_item_quantity(template_id: int, template_item_id: int, defau
         conn.close()
         return {"error": "Template item not found"}
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         SELECT * FROM template_items
         WHERE id = ? AND template_id = ?
-    """, (template_item_id, template_id))
+    """), (template_item_id, template_id))
 
     updated = cursor.fetchone()
     conn.close()
@@ -692,20 +718,20 @@ def set_company_settings(user_id: int, name: str, email: str = "", phone: str = 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,))
+    cursor.execute(db_query("SELECT * FROM user_settings WHERE user_id = ?"), (user_id,))
     existing = cursor.fetchone()
 
     if existing:
-        cursor.execute("""
+        cursor.execute(db_query("""
             UPDATE user_settings
             SET company_name = ?, company_email = ?, company_phone = ?
             WHERE user_id = ?
-        """, (name, email, phone, user_id))
+        """), (name, email, phone, user_id))
     else:
-        cursor.execute("""
+        cursor.execute(db_query("""
             INSERT INTO user_settings (user_id, company_name, company_email, company_phone)
             VALUES (?, ?, ?, ?)
-        """, (user_id, name, email, phone))
+        """), (user_id, name, email, phone))
 
     conn.commit()
     conn.close()
@@ -723,11 +749,11 @@ def get_company_settings(user_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(db_query("""
         SELECT company_name, company_email, company_phone
         FROM user_settings
         WHERE user_id = ?
-    """, (user_id,))
+    """), (user_id,))
 
     row = cursor.fetchone()
     conn.close()
@@ -752,10 +778,10 @@ def subscribe(subscriber: Subscriber):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(db_query("""
             INSERT INTO subscribers (email, accepted)
             VALUES (?, ?)
-        """, (subscriber.email, int(subscriber.accepted)))
+        """), (subscriber.email, int(subscriber.accepted)))
         conn.commit()
     except Exception:
         conn.close()
@@ -763,7 +789,6 @@ def subscribe(subscriber: Subscriber):
 
     conn.close()
     return {"message": "Subscribed successfully"}
-
 
 
 
