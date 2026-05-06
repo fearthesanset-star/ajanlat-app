@@ -5,3 +5,4 @@ pandas
 openpyxl
 reportlab==3.6.12
 python-multipart
+psycopg2-binary
