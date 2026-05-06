@@ -2,6 +2,8 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
+from passlib.context import CryptContext
+
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib import colors
@@ -28,6 +30,7 @@ app.add_middleware(
 )
 
 COMPANY_NAME = "Sajat Ceg Kft."
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def db_query(query: str) -> str:
@@ -78,7 +81,7 @@ def root():
 @app.post("/register")
 def register(user: UserRegister):
     email = user.email.strip()
-    password = user.password.strip()
+    password = pwd_context.hash(user.password.strip())
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -106,14 +109,22 @@ def login(user: UserLogin):
     cursor = conn.cursor()
 
     cursor.execute(
-        db_query("SELECT * FROM users WHERE email = ? AND password = ?"),
-        (email, password)
+        db_query("SELECT * FROM users WHERE email = ?"),
+        (email,)
     )
 
     db_user = cursor.fetchone()
     conn.close()
 
     if not db_user:
+        return {"error": "Hibás email vagy jelszó"}
+
+    valid_password = pwd_context.verify(
+        password,
+        db_user["password"]
+    )
+
+    if not valid_password:
         return {"error": "Hibás email vagy jelszó"}
 
     return {
