@@ -72,20 +72,7 @@ def init_db():
         )
     """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER UNIQUE,
-            company_name TEXT NOT NULL,
-            company_email TEXT DEFAULT '',
-            company_phone TEXT DEFAULT ''
-        )
-    """)
 
-    cursor.execute("""
-        INSERT OR IGNORE INTO settings (id, company_name)
-        VALUES (1, 'Saját Cég Kft.')
-    """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS subscribers (
@@ -112,10 +99,7 @@ def init_db():
         "ALTER TABLE projects ADD COLUMN user_id INTEGER",
         "ALTER TABLE projects ADD COLUMN valid_until TEXT",
         "ALTER TABLE templates ADD COLUMN user_id INTEGER",
-        "ALTER TABLE settings ADD COLUMN company_email TEXT DEFAULT ''",
-        "ALTER TABLE settings ADD COLUMN company_phone TEXT DEFAULT ''",
         "ALTER TABLE subscribers ADD COLUMN accepted INTEGER DEFAULT 0",
-        "ALTER TABLE settings ADD COLUMN user_id INTEGER",
     ]
 
     for migration in migrations:

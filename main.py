@@ -107,16 +107,7 @@ def login(user: UserLogin):
     }
 
 
-@app.get("/debug-users")
-def debug_users():
-    conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute("SELECT id, email FROM users")
-    users = cursor.fetchall()
-
-    conn.close()
-    return [dict(user) for user in users]
 
 
 @app.post("/items")
@@ -336,7 +327,7 @@ def export_project_pdf(project_id: int):
 
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
     project = cursor.fetchone()
 
@@ -773,46 +764,7 @@ def subscribe(subscriber: Subscriber):
     conn.close()
     return {"message": "Subscribed successfully"}
 
-@app.get("/debug-users")
-def debug_users():
-    conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM users")
-    rows = cursor.fetchall()
-
-    conn.close()
-    return [dict(row) for row in rows]
-
-
-@app.get("/debug-user-settings")
-def debug_user_settings():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM user_settings")
-    rows = cursor.fetchall()
-
-    conn.close()
-    return [dict(row) for row in rows]
-
-
-@app.get("/subscribers")
-def get_subscribers():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM subscribers ORDER BY id DESC")
-    rows = cursor.fetchall()
-    conn.close()
-
-    return [dict(row) for row in rows]
-
-
-@app.get("/fix-db")
-def fix_db():
-    init_db()
-    return {"message": "DB updated"}
 
 
 
