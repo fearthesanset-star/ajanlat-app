@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
-from passlib.context import CryptContext
+import bcrypt
 
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
@@ -30,7 +30,16 @@ app.add_middleware(
 )
 
 COMPANY_NAME = "Sajat Ceg Kft."
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def hash_password(password: str) -> str:
+    password_bytes = password.encode("utf-8")[:72]
+    hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
+    return hashed.decode("utf-8")
+
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    password_bytes = password.encode("utf-8")[:72]
+    hashed_bytes = hashed_password.encode("utf-8")
+    return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
 def db_query(query: str) -> str:
@@ -81,7 +90,7 @@ def root():
 @app.post("/register")
 def register(user: UserRegister):
     email = user.email.strip()
-    password = pwd_context.hash(user.password.strip())
+    password = hash_password(user.password.strip())
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -119,10 +128,11 @@ def login(user: UserLogin):
     if not db_user:
         return {"error": "Hibás email vagy jelszó"}
 
-    valid_password = pwd_context.verify(
+    valid_password = verify_password(
         password,
         db_user["password"]
     )
+    
 
     if not valid_password:
         return {"error": "Hibás email vagy jelszó"}
