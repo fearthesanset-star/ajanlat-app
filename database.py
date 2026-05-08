@@ -22,6 +22,13 @@ def get_connection():
     return conn
 
 
+def run_migration(cursor, sql):
+    try:
+        cursor.execute(sql)
+    except Exception:
+        pass
+
+
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
@@ -48,11 +55,23 @@ def init_db():
         """)
 
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS customers (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT DEFAULT '',
+                phone TEXT DEFAULT '',
+                address TEXT DEFAULT ''
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS projects (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
                 valid_until TEXT,
-                user_id INTEGER
+                user_id INTEGER,
+                customer_id INTEGER
             )
         """)
 
@@ -101,6 +120,13 @@ def init_db():
             )
         """)
 
+        postgres_migrations = [
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS customer_id INTEGER",
+        ]
+
+        for migration in postgres_migrations:
+            run_migration(cursor, migration)
+
     else:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -123,11 +149,23 @@ def init_db():
         """)
 
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS customers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT DEFAULT '',
+                phone TEXT DEFAULT '',
+                address TEXT DEFAULT ''
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 valid_until TEXT,
-                user_id INTEGER
+                user_id INTEGER,
+                customer_id INTEGER
             )
         """)
 
@@ -180,19 +218,17 @@ def init_db():
             )
         """)
 
-        migrations = [
+        sqlite_migrations = [
             "ALTER TABLE items ADD COLUMN user_id INTEGER",
             "ALTER TABLE projects ADD COLUMN user_id INTEGER",
             "ALTER TABLE projects ADD COLUMN valid_until TEXT",
+            "ALTER TABLE projects ADD COLUMN customer_id INTEGER",
             "ALTER TABLE templates ADD COLUMN user_id INTEGER",
             "ALTER TABLE subscribers ADD COLUMN accepted INTEGER DEFAULT 0",
         ]
 
-        for migration in migrations:
-            try:
-                cursor.execute(migration)
-            except sqlite3.OperationalError:
-                pass
+        for migration in sqlite_migrations:
+            run_migration(cursor, migration)
 
     conn.commit()
     conn.close()
