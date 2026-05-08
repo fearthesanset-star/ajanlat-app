@@ -117,6 +117,12 @@ class Item(BaseModel):
     price: float
     description: str
 
+class Customer(BaseModel):
+    name: str
+    email: str = ""
+    phone: str = ""
+    address: str = ""
+
 
 @app.get("/")
 def root():
@@ -560,6 +566,19 @@ def export_project_pdf(
     current_company_email = settings_row["company_email"] if settings_row else ""
     current_company_phone = settings_row["company_phone"] if settings_row else ""
 
+    customer_row = None
+
+    if project["customer_id"]:
+        cursor.execute(
+            db_query("""
+                SELECT name, email, phone, address
+                FROM customers
+                WHERE id = ? AND user_id = ?
+            """),
+            (project["customer_id"], current_user_id),
+        )
+        customer_row = cursor.fetchone()
+
     conn.close()
 
     logo_path = "logo.png"
@@ -580,6 +599,21 @@ def export_project_pdf(
 
     elements.append(Paragraph(f"Árajánlat - {project['name']}", styles["Heading2"]))
     elements.append(Spacer(1, 20))
+
+    if customer_row:
+        elements.append(Paragraph("<b>Ügyfél adatai:</b>", styles["Heading3"]))
+        elements.append(Paragraph(f"Név: {customer_row['name']}", styles["Normal"]))
+
+        if customer_row["email"]:
+            elements.append(Paragraph(f"Email: {customer_row['email']}", styles["Normal"]))
+
+        if customer_row["phone"]:
+            elements.append(Paragraph(f"Telefon: {customer_row['phone']}", styles["Normal"]))
+
+        if customer_row["address"]:
+            elements.append(Paragraph(f"Cím: {customer_row['address']}", styles["Normal"]))
+
+        elements.append(Spacer(1, 20))
 
     table_data = [["Tétel", "Mennyiség", "Egységár", "Összesen"]]
     total = 0
@@ -950,6 +984,143 @@ def import_items(
         "message": "Import temporarily disabled during user-based migration"
     }
 
+@app.post("/customers")
+def create_customer(
+    customer: Customer,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(db_query(f"""
+        INSERT INTO customers (user_id, name, email, phone, address)
+        VALUES (?, ?, ?, ?, ?)
+        {returning_id()}
+    """), (
+        current_user_id,
+        customer.name,
+        customer.email,
+        customer.phone,
+        customer.address,
+    ))
+
+    customer_id = get_inserted_id(cursor)
+    conn.commit()
+    conn.close()
+
+    return {
+        "id": customer_id,
+        "user_id": current_user_id,
+        "name": customer.name,
+        "email": customer.email,
+        "phone": customer.phone,
+        "address": customer.address,
+    }
+
+
+@app.get("/customers/me")
+def get_my_customers(current_user_id: int = Depends(get_current_user_id)):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM customers WHERE user_id = ? ORDER BY id DESC"),
+        (current_user_id,),
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+@app.delete("/customers/{customer_id}")
+def delete_customer(
+    customer_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM customers WHERE id = ? AND user_id = ?"),
+        (customer_id, current_user_id),
+    )
+
+    customer = cursor.fetchone()
+
+    if not customer:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    cursor.execute(
+        db_query("""
+            UPDATE projects
+            SET customer_id = NULL
+            WHERE customer_id = ? AND user_id = ?
+        """),
+        (customer_id, current_user_id),
+    )
+
+    cursor.execute(
+        db_query("DELETE FROM customers WHERE id = ? AND user_id = ?"),
+        (customer_id, current_user_id),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return {"message": "Customer deleted"}
+
+
+@app.put("/projects/{project_id}/customer/{customer_id}")
+def assign_customer_to_project(
+    project_id: int,
+    customer_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
+
+    project = cursor.fetchone()
+
+    if not project:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    cursor.execute(
+        db_query("SELECT * FROM customers WHERE id = ? AND user_id = ?"),
+        (customer_id, current_user_id),
+    )
+
+    customer = cursor.fetchone()
+
+    if not customer:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    cursor.execute(
+        db_query("""
+            UPDATE projects
+            SET customer_id = ?
+            WHERE id = ? AND user_id = ?
+        """),
+        (customer_id, project_id, current_user_id),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "message": "Customer assigned to project",
+        "project_id": project_id,
+        "customer_id": customer_id,
+    }
 
 @app.put("/settings/company")
 def set_company_settings(
