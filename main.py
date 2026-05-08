@@ -668,17 +668,17 @@ def export_project_pdf(
     elements.append(table)
     elements.append(Spacer(1, 20))
 
-elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 20))
 
-elements.append(
+    elements.append(
     Paragraph(f"<b>Nettó összeg:</b> {net_total:,.0f} Ft", styles["Heading3"])
 )
 
-elements.append(
+    elements.append(
     Paragraph(f"<b>ÁFA (27%):</b> {vat_amount:,.0f} Ft", styles["Heading3"])
 )
 
-elements.append(
+    elements.append(
     Paragraph(f"<b>Bruttó végösszeg:</b> {gross_total:,.0f} Ft", styles["Heading2"])
 )
     elements.append(Spacer(1, 20))
@@ -733,18 +733,18 @@ elements.append(
         )
     )
 
-elements.append(Spacer(1, 30))
+    elements.append(Spacer(1, 30))
 
-elements.append(
+    elements.append(
     Paragraph(
         "<b>Fizetési feltételek:</b> 50% előleg, 50% teljesítés után",
         styles["Normal"],
     )
 )
 
-elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 10))
 
-elements.append(
+    elements.append(
     Paragraph(
         "Köszönjük megkeresését és az együttműködés lehetőségét!",
         styles["Italic"],
