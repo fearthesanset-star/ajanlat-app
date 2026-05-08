@@ -11,6 +11,8 @@ import bcrypt
 import io
 import os
 
+from datetime import datetime
+
 from database import init_db, get_connection, is_postgres
 
 app = FastAPI()
@@ -597,7 +599,29 @@ def export_project_pdf(
         elements.append(Paragraph(f"Ajánlat érvényes: {project['valid_until']}", styles["Normal"]))
         elements.append(Spacer(1, 10))
 
-    elements.append(Paragraph(f"Árajánlat - {project['name']}", styles["Heading2"]))
+    quote_number = f"AJ-{project['id']:04d}"
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    elements.append(
+        Paragraph(f"Árajánlat - {project['name']}", styles["Heading1"])
+    )
+
+    elements.append(
+        Paragraph(f"<b>Ajánlat száma:</b> {quote_number}", styles["Normal"])
+    )
+
+    elements.append(
+        Paragraph(f"<b>Kiállítás dátuma:</b> {today}", styles["Normal"])
+    )
+
+    if project["valid_until"]:
+        elements.append(
+            Paragraph(
+                f"<b>Érvényesség:</b> {project['valid_until']}",
+                styles["Normal"],
+            )
+        )
+
     elements.append(Spacer(1, 20))
 
     if customer_row:
@@ -616,11 +640,15 @@ def export_project_pdf(
         elements.append(Spacer(1, 20))
 
     table_data = [["Tétel", "Mennyiség", "Egységár", "Összesen"]]
-    total = 0
+    net_total = 0
 
     for item in project_items:
         line_total = item["quantity"] * item["price"]
-        total += line_total
+        net_total += line_total
+
+    vat_rate = 0.27
+    vat_amount = net_total * vat_rate
+    gross_total = net_total + vat_amount
 
         table_data.append([
             item["name"],
@@ -639,7 +667,19 @@ def export_project_pdf(
     elements.append(table)
     elements.append(Spacer(1, 20))
 
-    elements.append(Paragraph(f"<b>Végösszeg: {total} Ft</b>", styles["Heading2"]))
+elements.append(Spacer(1, 20))
+
+elements.append(
+    Paragraph(f"<b>Nettó összeg:</b> {net_total:,.0f} Ft", styles["Heading3"])
+)
+
+elements.append(
+    Paragraph(f"<b>ÁFA (27%):</b> {vat_amount:,.0f} Ft", styles["Heading3"])
+)
+
+elements.append(
+    Paragraph(f"<b>Bruttó végösszeg:</b> {gross_total:,.0f} Ft", styles["Heading2"])
+)
     elements.append(Spacer(1, 20))
 
     elements.append(Paragraph("Tisztelt Megrendelő!", styles["Normal"]))
@@ -691,6 +731,24 @@ def export_project_pdf(
             styles["Normal"],
         )
     )
+
+elements.append(Spacer(1, 30))
+
+elements.append(
+    Paragraph(
+        "<b>Fizetési feltételek:</b> 50% előleg, 50% teljesítés után",
+        styles["Normal"],
+    )
+)
+
+elements.append(Spacer(1, 10))
+
+elements.append(
+    Paragraph(
+        "Köszönjük megkeresését és az együttműködés lehetőségét!",
+        styles["Italic"],
+    )
+)
 
     doc.build(elements)
     buffer.seek(0)
