@@ -640,15 +640,12 @@ def export_project_pdf(
         elements.append(Spacer(1, 20))
 
     table_data = [["Tétel", "Mennyiség", "Egységár", "Összesen"]]
+
     net_total = 0
 
     for item in project_items:
         line_total = item["quantity"] * item["price"]
         net_total += line_total
-
-    vat_rate = 0.27
-    vat_amount = net_total * vat_rate
-    gross_total = net_total + vat_amount
 
         table_data.append([
             item["name"],
@@ -656,6 +653,10 @@ def export_project_pdf(
             f"{item['price']} Ft",
             f"{line_total} Ft",
         ])
+
+    vat_rate = 0.27
+    vat_amount = net_total * vat_rate
+    gross_total = net_total + vat_amount
 
     table = Table(table_data)
     table.setStyle(TableStyle([
