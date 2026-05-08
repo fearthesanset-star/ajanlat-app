@@ -704,7 +704,7 @@ def export_project_pdf(
 
     elements.append(
         Paragraph(
-            f"<b>A teljes kivitelezési költség: {total} Ft.</b>",
+            f"<b>A teljes kivitelezési költség: {gross_total} Ft.</b>",
             styles["Normal"],
         )
     )
