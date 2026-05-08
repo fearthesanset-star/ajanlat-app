@@ -290,6 +290,61 @@ def get_my_projects(current_user_id: int = Depends(get_current_user_id)):
     conn.close()
     return [dict(row) for row in rows]
 
+@app.get("/projects/{project_id}")
+def get_project(
+    project_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
+
+    project = cursor.fetchone()
+    conn.close()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return dict(project)
+
+@app.delete("/projects/{project_id}")
+def delete_project(
+    project_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
+
+    project = cursor.fetchone()
+
+    if not project:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    cursor.execute(
+        db_query("DELETE FROM project_items WHERE project_id = ?"),
+        (project_id,),
+    )
+
+    cursor.execute(
+        db_query("DELETE FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return {"message": "Project deleted"}
+
 
 @app.post("/projects/{project_id}/add-item/{item_id}")
 def add_item_to_project(
