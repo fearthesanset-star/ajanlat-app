@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 import bcrypt
 import io
 import os
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 from datetime import datetime
 
@@ -518,7 +520,18 @@ def export_project_pdf(
 ):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer)
+
+    pdfmetrics.registerFont(
+        TTFont("DejaVu", "fonts/DejaVuSans.ttf")
+    )
+
     styles = getSampleStyleSheet()
+    styles["Normal"].fontName = "DejaVu"
+    styles["Heading1"].fontName = "DejaVu"
+    styles["Heading2"].fontName = "DejaVu"
+    styles["Heading3"].fontName = "DejaVu"
+    styles["Italic"].fontName = "DejaVu"
+
     elements = []
 
     today = datetime.now().strftime("%Y-%m-%d")
