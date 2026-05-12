@@ -127,6 +127,18 @@ class Customer(BaseModel):
     phone: str = ""
     address: str = ""
 
+class ItemUpdate(BaseModel):
+    name: str
+    type: str
+    unit: str
+    price: float
+    description: str
+
+
+class ProjectUpdate(BaseModel):
+    name: str
+    valid_until: str = ""
+
 
 @app.get("/")
 def root():
@@ -258,6 +270,48 @@ def delete_item(item_id: int, current_user_id: int = Depends(get_current_user_id
     conn.close()
     return {"message": "Item deleted"}
 
+@app.put("/items/{item_id}")
+def update_item(
+    item_id: int,
+    item: ItemUpdate,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("""
+            UPDATE items
+            SET name = ?, type = ?, unit = ?, price = ?, description = ?
+            WHERE id = ? AND user_id = ?
+        """),
+        (
+            item.name,
+            item.type,
+            item.unit,
+            item.price,
+            item.description,
+            item_id,
+            current_user_id,
+        ),
+    )
+
+    conn.commit()
+
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    cursor.execute(
+        db_query("SELECT * FROM items WHERE id = ? AND user_id = ?"),
+        (item_id, current_user_id),
+    )
+
+    updated_item = cursor.fetchone()
+    conn.close()
+
+    return dict(updated_item)
+
 
 @app.post("/projects")
 def create_project(
@@ -354,6 +408,45 @@ def delete_project(
     conn.close()
 
     return {"message": "Project deleted"}
+
+@app.put("/projects/{project_id}")
+def update_project(
+    project_id: int,
+    project_data: ProjectUpdate,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        db_query("""
+            UPDATE projects
+            SET name = ?, valid_until = ?
+            WHERE id = ? AND user_id = ?
+        """),
+        (
+            project_data.name,
+            project_data.valid_until,
+            project_id,
+            current_user_id,
+        ),
+    )
+
+    conn.commit()
+
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    cursor.execute(
+        db_query("SELECT * FROM projects WHERE id = ? AND user_id = ?"),
+        (project_id, current_user_id),
+    )
+
+    updated_project = cursor.fetchone()
+    conn.close()
+
+    return dict(updated_project)
 
 
 @app.post("/projects/{project_id}/add-item/{item_id}")
